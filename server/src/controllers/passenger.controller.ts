@@ -3,7 +3,7 @@ import { Response, Request } from "express";
 import { createBookingService } from "../services/passenger.service";
 
 
-export const createBooking = async (req: Request, res: Response) => {
+export const createBookingController = async (req: Request, res: Response) => {
     try {
         const { source, destination } = req.body;
         const booking = await createBookingService({ passengerId: (req as any).auth?.userId, source, destination });

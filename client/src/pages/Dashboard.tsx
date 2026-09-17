@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
+import Map from "@/components/Map";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -338,97 +339,13 @@ export default function Dashboard() {
 
             {/* Right: map / status panel */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Mock map area */}
+              {/* MapLibre map area */}
               <div className="relative flex-1 overflow-hidden bg-drio-deep">
-                {/* Grid pattern to simulate a map */}
-                <svg
-                  className="absolute inset-0 w-full h-full opacity-[0.07]"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <defs>
-                    <pattern
-                      id="map-grid"
-                      x="0"
-                      y="0"
-                      width="60"
-                      height="60"
-                      patternUnits="userSpaceOnUse"
-                    >
-                      <path
-                        d="M 60 0 L 0 0 0 60"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="0.8"
-                      />
-                    </pattern>
-                    <pattern
-                      id="map-grid-wide"
-                      x="0"
-                      y="0"
-                      width="240"
-                      height="240"
-                      patternUnits="userSpaceOnUse"
-                    >
-                      <path
-                        d="M 240 0 L 0 0 0 240"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="1.5"
-                      />
-                    </pattern>
-                  </defs>
-                  <rect width="100%" height="100%" fill="url(#map-grid)" />
-                  <rect width="100%" height="100%" fill="url(#map-grid-wide)" />
-                </svg>
+                <Map className="h-full w-full" />
 
-                {/* Warm glow in center */}
+                {/* Warm accent overlay */}
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                   <div className="h-[360px] w-[360px] rounded-full bg-primary/6 blur-3xl" />
-                </div>
-
-                {/* Route line */}
-                {rideBooked && (
-                  <svg
-                    className="absolute inset-0 w-full h-full"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <polyline
-                      points="25%,70% 38%,52% 52%,42% 65%,30%"
-                      fill="none"
-                      stroke="var(--primary)"
-                      strokeWidth="2.5"
-                      strokeDasharray="6 4"
-                      strokeLinecap="round"
-                    />
-                    <circle cx="25%" cy="70%" r="5" fill="var(--primary)" />
-                    <circle cx="65%" cy="30%" r="5" fill="var(--foreground)" stroke="var(--primary)" strokeWidth="2" />
-                  </svg>
-                )}
-
-                {/* Map label */}
-                {!rideBooked && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="rounded-3xl bg-card border border-border px-7 py-5 text-center shadow-none">
-                      <MapPin className="h-6 w-6 text-primary mx-auto mb-2" />
-                      <p className="text-[14px] font-semibold text-foreground">
-                        Set your destination
-                      </p>
-                      <p className="text-[12px] text-muted-foreground mt-1">
-                        Enter pickup &amp; drop-off to see your route
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Nearby cars icons */}
-                <div className="absolute top-[30%] left-[40%]">
-                  <Car className="h-5 w-5 text-primary/80" />
-                </div>
-                <div className="absolute top-[50%] left-[60%]">
-                  <Car className="h-5 w-5 text-primary/60" />
-                </div>
-                <div className="absolute top-[20%] left-[70%]">
-                  <Car className="h-4 w-4 text-primary/50" />
                 </div>
               </div>
 
