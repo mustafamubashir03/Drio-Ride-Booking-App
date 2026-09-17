@@ -21,7 +21,7 @@ passengerRouter.get(
 
 passengerRouter.post(
     '/bookings',
-    requireRole('passenger'),
+    requireRole('passenger', 'admin'),
     requirePermission('booking:create'),
     createBookingController
 );

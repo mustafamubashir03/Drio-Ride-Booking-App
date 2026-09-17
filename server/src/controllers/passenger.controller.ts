@@ -6,7 +6,7 @@ import { createBookingService } from "../services/passenger.service";
 export const createBookingController = async (req: Request, res: Response) => {
     try {
         const { source, destination } = req.body;
-        const booking = await createBookingService({ passengerId: (req as any).auth?.userId, source, destination });
+        const booking = await createBookingService({ passengerId: req.authUser!.id, source, destination });
         if (!booking) {
             return res.status(400).json({ success: false, message: "Failed to create booking" });
         }

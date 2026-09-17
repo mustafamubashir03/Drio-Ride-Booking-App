@@ -24,10 +24,11 @@ This README explains, in plain language, what the project does, how it is put to
 10. [Booking Architecture and the Flow](#booking-architecture-and-the-flow)
 11. [API Endpoints](#api-endpoints)
 12. [What Was Built and Why (Build Log)](#what-was-built-and-why-build-log)
-13. [Things We Verified](#things-we-verified)
-14. [Important Git Note Before You Push](#important-git-note-before-you-push)
-15. [Security Notes](#security-notes)
-16. [What Comes Next](#what-comes-next)
+13. [Maps, Places, and Routes: Google Maps, but Open-Source](#maps-places-and-routes-google-maps-but-open-source)
+14. [Things We Verified](#things-we-verified)
+15. [Important Git Note Before You Push](#important-git-note-before-you-push)
+16. [Security Notes](#security-notes)
+17. [What Comes Next](#what-comes-next)
 
 ---
 
@@ -61,6 +62,10 @@ can later get different capabilities (booking, accepting rides, managing users, 
 - **React Router 7** - page navigation (`/login`, `/register`, `/dashboard`).
 - **lucide-react** - icons.
 - **better-auth/react** - the official client SDK for Better Auth.
+- **MapLibre GL JS** - the interactive map renderer (`maplibre-gl`), running the vanilla JS API.
+- **OpenFreeMap tiles** - the map background styles (open, OSM-based; light `positron` + dark styles).
+- **Photon (komoot)** - the place-search/geocoding API (queried through a server-side proxy).
+- **OSRM (Open Source Routing Machine)** - the driving-route/ETA API (also server-side)
 
 ### Server (`server/`)
 
@@ -71,6 +76,7 @@ can later get different capabilities (booking, accepting rides, managing users, 
 - **Mongoose 9** - an additional "modeling" layer we added for our own business entities (roles, users with geo-location, future bookings).
 - **nodemailer** - sends the verification emails through Gmail SMTP.
 - **winston** - structured logging.
+- **zod** - request-validation schemas (places, routes).
 - **nodemon / ts-node** - running the TypeScript server in development.
 
 ### Database
@@ -85,10 +91,12 @@ can later get different capabilities (booking, accepting rides, managing users, 
 Drio/
 ├── client/                  # React + Vite frontend
 │   ├── src/
-│   │   ├── components/      # Reusable UI (AuthLayout, Logo, ui/*)
+│   │   ├── components/      # Reusable UI (AuthLayout, Logo, ui/*, Map, PlaceSearchField)
+│   │   ├── hooks/           # use-route, use-place-search (client-side data hooks)
 │   │   ├── pages/           # Login, Register, Dashboard
 │   │   ├── lib/
 │   │   │   ├── auth-client.ts   # Better Auth client configuration
+│   │   │   ├── places-api.ts    # fetch wrappers for /api/places + /api/routes
 │   │   │   └── utils.ts
 │   │   ├── App.tsx          # Route definitions
 │   │   ├── main.tsx
@@ -114,16 +122,22 @@ Drio/
         ├── models/                # Mongoose models
         │   ├── user.model.ts      # Map over the `user` collection (additive)
         │   ├── role.model.ts      # The `roles` collection (permission matrix)
-        │   ├── booking.model.ts   # (empty - next step)
+        │   ├── booking.model.ts   # Real booking documents (passenger, driver, fare, status)
         │   └── index.ts
-        └── routers/
-            ├── v1/
-            │   ├── auth.router.ts        # GET /api/v1/auth/me
-            │   ├── passenger.router.ts   # profile + guarded bookings routes
-            │   ├── driver.router.ts      # profile + guarded rides routes
-            │   ├── ping.router.ts
-            │   └── index.router.ts
-            └── v2/ (placeholder)
+        ├── routers/
+        │   ├── routes.router.ts       # GET /api/routes (OSRM route/ETA)
+        │   ├── v1/
+        │   │   ├── auth.router.ts        # GET /api/v1/auth/me
+        │   │   ├── passenger.router.ts   # profile + real booking create/list routes
+        │   │   ├── driver.router.ts      # profile + guarded rides routes
+        │   │   ├── places.router.ts      # GET /api/places/search (Photon proxy)
+        │   │   ├── ping.router.ts
+        │   │   └── index.router.ts
+        │   └── v2/ (placeholder)
+        ├── controllers/           # thin HTTP layer (routes, places, passenger)
+        ├── services/              # business logic (pickup fare, OSRM/Photon calls)
+        ├── repositories/          # DB access (booking.repository)
+        └── validators/            # zod schemas (places, routes)
 ```
 
 ---
@@ -382,7 +396,7 @@ flowchart LR
 - `client/src/App.tsx` defines the routes.
 - `ProtectedRoute` redirects unauthenticated users to `/login`.
 - `PublicOnlyRoute` redirects already-authenticated users away from `/login` and `/register`.
-- The dashboard (`pages/Dashboard.tsx`) is a polished dark, premium-themed booking UI (sidebar, book-a-ride panel, mock map, ride history, account tab). It is currently UI-only; the booking logic wires in next.
+- The dashboard (`pages/Dashboard.tsx`) is a polished dark, premium-themed booking UI (sidebar, book-a-ride panel, live MapLibre map, ride history, account tab). The "Book a Ride" flow, place search, route preview, and booking submission are now wired to the real API.
 
 ---
 
@@ -513,7 +527,7 @@ MongoDB collections used by the app:
 
 **`roles`** - the permission matrix. One document per role: `name` (unique), `description`, `permissions[]` (the `resource:action` strings), `isSystem` (whether it must not be deleted). Seeded by `rbac.seed.ts`.
 
-**`booking`** - (being built) the ride itself. Planned fields: `passenger` (ref `user`), `driver` (ref `user`, null until accepted), `source` / `destination` (`{ latitude, longitude }`), `fair` (fare amount), `distance`, `status` (`pending` \| `confirmed` \| `cancelled` \| `completed`), `feedback` (`{ rating, comment }`), timestamps.
+**`booking`** - the ride itself. Fields as modeled: `passenger` (ref `user`), `driver` (ref `user`, default null), `source` / `destination` (`{ latitude, longitude }`), `fair` (typo for `fare` - see below), `status` (`pending` \| `confirmed` \| `cancelled` \| `completed`), `feedback` (`{ rating, comment }`). **Note:** the schema has no `timestamps: true`, so bookings currently save with `createdAt: null`; the computed fare is not yet persisted (the service passes `fare`, the model stores `fair`). Both are report-only open items.
 
 **How the collections relate** - the `user` is the hub: it has a role (from `roles`), holds sessions (from `session`), links providers (from `account`), and will drive bookings as either `passenger` or `driver`:
 
@@ -560,7 +574,7 @@ erDiagram
     }
 ```
 
-> `booking` exists only in the readme/model plan right now; the collection appears in MongoDB as soon as the first booking service call creates a document.
+> `booking` documents are now **really created** by `POST /api/v1/passenger/bookings` (collection appears on first booking). They are minimal today (no fare persisted, no timestamps) because the schema is being deliberately kept untouched while the booking flow is proven.
 
 ---
 
@@ -716,20 +730,24 @@ Statuses are stored as a string enum on the booking (`pending` > `confirmed` > `
 - `GET /api/auth/verify-email` - verify the email link.
 - Admin plugin routes, e.g. `POST /api/auth/admin/set-role` (change someone's role), which only `admin` can call.
 
-### Our own endpoints (under `/api/v1`)
+### Our own endpoints (under `/api/v1`, plus the new public geo endpoints)
 
 | Method | Path | Guards | Purpose |
 | --- | --- | --- | --- |
 | GET | `/api/v1/ping` | none | health ping |
 | GET | `/api/v1/auth/me` | `requireAuth` | current user profile |
 | GET | `/api/v1/passenger/profile` | `requireAuth` | passenger profile |
-| GET | `/api/v1/passenger/bookings` | role `passenger\|driver\|admin` + `booking:list` | booking list (stub) |
-| POST | `/api/v1/passenger/bookings` | role `passenger` + `booking:create` | create a booking (stub) |
+| GET | `/api/v1/passenger/bookings` | role `passenger\|driver\|admin` + `booking:list` | booking list (list handler still a stub) |
+| POST | `/api/v1/passenger/bookings` | role `passenger\|admin` + `booking:create` | **creates a real booking** (source, destination, fare, `pending`) |
 | GET | `/api/v1/driver/profile` | `requireAuth` | driver profile |
 | GET | `/api/v1/driver/rides` | role `driver\|admin` + `booking:list` | available rides (stub) |
+| GET | `/api/places/search?q=...` | none (validated, proxied) | **place/address search** over OpenStreetMap via Photon |
+| GET | `/api/routes?from=lng,lat&to=lng,lat` | none (validated, proxied) | **driving route + ETA + geometry** via OSRM |
 | GET | `/api/health/auth` | none | shows live collection counts |
 
-The booking/ride handlers are placeholder stubs that exist to prove the RBAC middleware works. The `booking` Mongoose model still needs to be built (next step).
+The `/api/places/*` and `/api/routes` endpoints are public on purpose: they proxy third-party geocoding/routing providers **server-side**, so no external API key ever needs to live in the browser (more in [Maps, Places, and Routes](#maps-places-and-routes-google-maps-but-open-source)).
+
+Booking list / driver rides remain stub responses; the creation flow (the part passengers actually hit) is fully real.
 
 ---
 
@@ -782,6 +800,139 @@ We verified (details in the next section) that:
 - Passengers can create bookings.
 - No cookie means **401 Unauthorized**.
 
+### Step 5. Put a real map on the dashboard
+
+The mock map placeholder was replaced with a live **MapLibre GL** map (`client/src/components/Map.tsx`) showing **OpenFreeMap** tiles (style: light `positron`; a dark style was added later). A manual "locate me" button (`GeolocateControl`) uses the device's GPS through the browser's Geolocation API.
+
+**Why:** a ride app *is* a map first. Everything else - choosing a pickup, previewing the route, watching the driver - sits on top of a map. And we deliberately chose the free, open-source map stack (MapLibre + OpenStreetMap-based tiles) over Google Maps, for cost and freedom reasons explained in the [dedicated section](#maps-places-and-routes-google-maps-but-open-source).
+
+### Step 6. Place search + route preview (the "Google Maps" magic, our way)
+
+Two more services were added, both as **server-side proxies** so the browser never holds an external key:
+
+1. **Place/address search** - typing in the From/To fields queries the **Photon** geocoder (komoot) through `GET /api/places/search?q=...`, with a 350 ms debounce and a 2-character minimum, returning up to 8 results. Selecting one pins a `FROM`/`TO` marker on the map.
+2. **Route + ETA** - once both ends are chosen, `GET /api/routes?from=lng,lat&to=lng,lat` asks **OSRM** (the Open Source Routing Machine, car/driving profile) for the real road distance, driving time, and the full route polyline. The dashboard draws the polyline (with a "casing" halo like premium map apps) and the camera auto-fits to the route.
+
+**Why:** this is exactly the interaction people expect from a ride-hailing app ("type your destination, see the route and ETA before you book"). Photon and OSRM are the popular open counterparts to Google's Places and Directions APIs - free, keyless at the public level, and self-hostable later.
+
+### Step 7. Make the booking real (and fix who may book)
+
+`POST /api/v1/passenger/bookings` now **actually creates** a `booking` document: passenger ref, source + destination coordinates, and a `pending` status. The fare is computed on the server as **base + per-kilometer** from the straight-line (Haversine) distance — with one known hitch: the Mongoose model names the field `fair` (a typo) while the service passes `fare`, so the computed fare is **not persisted yet**. We are deliberately not changing the booking schema while the flow is being proven; it is the first item in the fare roadmap. The dashboard's "Search for a ride" button calls the endpoint and, on success, shows the booking ID and a confirmation driver card.
+
+During verification we found that the admin account (the owner) got a **403 Forbidden: requires role passenger** - the create route was gated to `passenger` only. Since admins legitimately hold the `booking:create` permission, the guard was widened to `requireRole('passenger', 'admin')` (matching `GET /bookings`). Verified at the middleware level (admin allowed, passenger allowed, driver still denied) and through the full browser E2E.
+
+**Why:** "book a ride" is the product. The flow needed to persist a real booking against the real auth, not a mock, so that driver matching and history have real data to work with later. The RBAC gate then had to match reality - the platform owner books rides too.
+
+### Step 8. Correctness and polish
+
+- **Map theme toggle with persistence** - a sun/moon button switches the map between the dark and light OpenFreeMap styles; the route stays drawn across both (verified: no duplicate layers, dark labels re-colored for contrast). The theme also survives re-renders of the dashboard.
+- **FROM/TO labeled markers** and **camera fit** - markers are styled `FROM`/`TO` chips; the camera flies to fit the route, or to a single chosen point.
+- **English labels everywhere** - OpenFreeMap tiles are re-labeled to prefer `name_en`/Latin names so names render consistently.
+- **"Use my current location" in the From field** - a one-tap button uses the browser's same Geolocation API to set the pickup to your live position (reusing the existing geolocation capability, no new service).
+
+**Why:** these are the details that separate a demo from a product: routes must survive theme switches, labels must be readable, and "where am I" is the most-typed pickup in the world.
+
+---
+
+## Maps, Places, and Routes: Google Maps, but Open-Source
+
+A ride-booking app lives on a map, but it does **not** have to live on *Google's* map. Most of what a competitor would buy from the [Google Maps Platform](https://developers.google.com/maps) (map tiles, place autocomplete, turn-by-turn directions, location) we get from a fully open-source stack, in the plain-English terms below.
+
+| Need | Google Maps way | What Drio uses instead | Why ours |
+| --- | --- | --- | --- |
+| The map picture | Google Maps JS SDK / Map Tiles API | **MapLibre GL** + **OpenFreeMap** tiles (OpenStreetMap data) | Free, open, no API key, no per-load billing |
+| "Type a place, get suggestions" | Places Autocomplete / Address Validation | **Photon** (komoot geocoder over OSM), via `GET /api/places/search` | Free, keyless at the public level, self-hostable |
+| "Show me the route + ETA" | Directions API / Distance Matrix | **OSRM** (Open Source Routing Machine), via `GET /api/routes` | Free, open; car/driving profile today |
+| "Where is the user?" | Google's proprietary Fused Location (in the Google apps) | Browser **Geolocation API** (device GPS/Wi-Fi) | Built in, private, zero Google involvement |
+| Live traffic | Google traffic layer | Not yet available | Honest trade-off - see below |
+| Cost | Pay-per-request (free $200/mo credit, then per 1,000 requests) | **$0** in API fees today | Env vars let us point at our own servers later |
+
+### 1. The map itself (MapLibre GL + OpenFreeMap tiles)
+
+**What it is.** `client/src/components/Map.tsx` renders a real interactive map with zoom controls, rotation, an attribution line ("© OpenStreetMap contributors"), a light style by default, a dark style toggle, and route/marker layers on top.
+
+**Why we picked it (the Google contrast).** Google Maps in a web app means the Maps JavaScript SDK: you embed `<script src="...?key=API_KEY">`, pay per tile/Api load, and accept that Google tracks visitors and can change the terms. **MapLibre GL** is the open-source map *engine* (WebGL-based, the same style of technology Google uses internally) and **OpenFreeMap** serves free vector tiles from OpenStreetMap data. No key. No tracker. No per-load charge. If Google ever raises prices again, our map doesn't get more expensive.
+
+**Purpose exactly.** Give the passenger a real geographic canvas: see where they are, where the destination is, and which roads the route takes - the visual core of the "book a ride" screen.
+
+**Current state.** Working. Default view is Karachi (`[67.0011, 24.8607]`, zoom 11). Tiles load from the public OpenFreeMap servers. The geolocate button and the "Use my current location" pickup option both work. Route polylines draw with a dark "casing" halo and a warm accent line. The theme toggle flips dark/light and the route survives the switch.
+
+**Future plans.** (1) Self-host the tile server (e.g. `tileserver-gl` or the OpenFreeMap stack) so tile loading is private and immune to public-server rate limits; (2) cluster driver vehicles as real car icons once matching exists; (3) vehicle layer with live driver positions; (4) night-mode styling tuned to each vehicle class. **Live traffic is the known gap** - OSM data has no proprietary live-traffic feed; options later are OpenTrafficData-ish datasets or, pragmatically, a paid traffic overlay if our city is covered.
+
+**Pricing.** Google Maps pricing is usage-based - a mobile-oriented ride app can spend **thousands of dollars a month** on tiles + Places + Directions + maps SDK once the free credit runs out. Every Google feature we replaced is a line item we do not have. Our only cost now is whatever we choose to spend to host our own tiles/routing later (a few dollars a month on cheap VPS/docker hosting, self-managed).
+
+### 2. Address search (Photon place autocomplete)
+
+**What it is.** The From/To fields (`PlaceSearchField.tsx`) search the world as you type: 2+ characters, 350 ms debounce, up to 8 suggestions showing name + address line + icon category. Picking one sets the field and drops a `FROM`/`TO` marker.
+
+**Why Photon instead of Google Places.** The Google version (`Places Autocomplete`) is great and minute-accurate, but it demands an API key (which must not ship to the browser), bills per query, and is married to Google's data licensing. **Photon** is an open geocoder built on OpenStreetMap: results come back as plain JSON, it is free to use, and it can even be hosted by us. We proxy it through `GET /api/places/search` server-side so - like with routes - the client only ever talks to *our* API.
+
+**Purpose exactly.** Convert human words ("Dolmen Mall Clifton") into exact coordinates (`24.8022, 67.0309`) that routing and booking can consume. Coordinate accuracy is the whole job: a wrong pickup coordinate produces a wrong fare and a wrong driver match.
+
+**Current state.** Working against the public Photon API, worldwide search, English labels, category metadata attached. Known simplifications: no city biasing (a local app might want to prefer Karachi results), no "near me" boost yet, and result count capped at 8.
+
+**Future plans.** (1) Bias results to our operating regions (worth doing seriously before launch); (2) save "Home"/"Work" favorites into the account tab; (3) self-host Photon for reliability and to keep queries off shared public servers; (4) trademark/POI quality passes per city.
+
+**Pricing.** Google Places Autocomplete: paid per session/query. Photon public API: free (be kind - reasonable rate limits, it is a shared community service); self-hosted Photon: only server costs.
+
+### 3. Route + ETA (OSRM)
+
+**What it is.** `GET /api/routes?from=lng,lat&to=lng,lat` answers "what is the best driving route, how far, how long?" and returns the full shape of the road path. The dashboard draws that shape on the map and shows `23.0 km · 25 min` as soon as both ends are picked.
+
+**Why OSRM instead of Google Directions.** The Google counterpart (`Directions API`) calculates routes over Google's nav-graph with live traffic, transit, walking, cycling... and bills per request. **OSRM** is the Open Source Routing Machine - a high-performance routing engine trained on OpenStreetMap roads, famous for the idea "serve the whole planet in an instant". It gives us car (driving) routes plus a true road *geometry*, which is what lets us draw the path instead of a straight line. And because Google's Directions data is licensed to Google, we could not legally store or reuse those polylines the way we use ours.
+
+**Purpose exactly.** (1) Draw a believable, drivable route preview before booking (Google Maps behavior users expect); (2) ground future **pricing on real road distance** instead of a straight line; (3) feed future driver-ETA and matching ("who can reach the pickup fastest").
+
+**Current state.** Working against the public OSRM demo server, `driving` profile, `overview=full`, GeoJSON geometry; strict validation rejects malformed/out-of-range coordinates with `400`; `NoRoute` (e.g. an island with no roads) becomes a clean `400 no route` message; provider failures degrade to `Route service is unavailable` (never a 500 page). Route requests are currently **one at a time, alternatives off** (a clean contract for the E2E tests; multiple alternatives is an open item).
+
+**Future plans.** (1) Self-host OSRM (a container with city- or country-scope PBF extracts) - removes public-server rate limits and lets us scale; (2) per-class routing (the `lux`/`suv` tiers could prefer different roads - a luxury feel vs. shortest); (3) turn-by-turn step list for the trip screen; (4) alternative routes so passengers can pick; (5) live traffic overlay when a viable OSM-based feed exists for our cities. Until then, ETA is "typical traffic, current speed" - the same honesty any non-Google nav provider has.
+
+**Pricing.** Google Directions: per request, quickly large bills under load. OSRM public: free/community; self-hosted: "a server and traffic", where a city can even run on a single small machine.
+
+### 4. Live location ("Use my current location" + the map's locate button)
+
+**What it is.** From the From-field dropdown, "Use my current location" calls `navigator.geolocation.getCurrentPosition()` and makes that live point the pickup (field shows `Current location`, a `FROM` marker appears, routing starts). The map's locate button does the same with a blue dot and accuracy circle.
+
+**Why not Google?** Google apps use Google's *Fused Location* (a proprietary blend of GPS + Wi-Fi + cell + sensors). Browsers expose the **Geolocation API**, which uses the device's own GPS/Wi-Fi and **never involves Google or any third party** - it also works in Chrome, Edge, Safari, etc. without a key. For a ride app that lives in a browser, this is the natural choice.
+
+**Purpose exactly.** The pickup point is unsatisfying to type - a user's HOME is usually "where I am right now". One tap, zero typing, most-likely-correct pickup.
+
+**Current state.** Working, with friendlier failure messages for the three real-world error codes (permission denied / unavailable / timed out) and a busy state while the GPS is resolving. Verified in E2E with a faked GPS position (24.8004, 66.9817 - Sea View, Karachi).
+
+**Future plans.** Show the accuracy radius on the pickup marker; auto-suggest "Use my current location" as the top result when the From field is empty; persist last-used locations.
+
+**Pricing.** Free in every browser. (Google's *Fused Location* is only inside Google OS/apps; web alternative providers would charge per lookup - we need none.)
+
+### 5. The fare side: our own pricing, not Google's
+
+Google even sells ride-hailing plumbing (the *Maps Booking API / Platform APIs*) - that is a *marketplace* product, not something a small app needs. We compute our own fare, which is the part we must own anyway (drivers, margins, promos are ours).
+
+**How it works today.** `server/src/services/passenger.service.ts`: at booking creation time,
+`fare = 50 + 10 × distance` where `distance` is the **straight-line (Haversine)** distance in kilometers. Simple, deterministic, and fine to prove the pipeline - but it ignores roads. **Schema note:** this is currently *compute-only* - the Mongoose model spells the field `fair` (typo) so the value the service sends (`fare`) is dropped at save time, and bookings have no timestamps (`createdAt` is `null`). Both are known open items we are not touching while proving the flow; fixing the field name + `timestamps: true` is step one of the roadmap.
+
+**Pricing options for the roadmap** (all additive, none change the booking flow):
+1. **Road-distance fare** - swap the Haversine distance for the OSRM route distance we already fetch. Biggest immediate accuracy win; long winding routes stop being under-priced.
+2. **Per-vehicle-class multipliers** - the UI already has `Ride / Ride XL / Lux`. A multiplier (e.g. `×1.0 / ×1.6 / ×2.5`) per class turns the current static price chips into *real* estimates.
+3. **Time-of-day / demand (surge)** - multiply the base when demand is hot, exactly how Uber/Lyft call it "dynamic pricing".
+4. **Base-fare zones + minimum fare** - a floor so short trips still cover the driver's deadhead time.
+5. **Receipts & payment split** - store the final charges per class on the booking (schema allows) and itemize on the trip screen.
+6. **Promo codes / credits** - discount applied at booking, insurer accounts later.
+   > Today the fare lives **server-side** (source of truth) while the dashboard shows static `$8-12`-style chips as placeholders - the roadmap replaces those chips with the real estimated fare from `GET /api/routes` + the class multiplier.
+
+### 6. What this stack actually costs to run
+
+| | Google Maps Platform | Our open stack (public APIs) | Our open stack (self-hosted) |
+| --- | --- | --- | --- |
+| Map | ~$7 per 1,000 tile/map loads easily | $0 (OpenFreeMap) | small VPS (e.g. `tileserver-gl`) |
+| Autocomplete | paid per request | $0 (Photon public) | `photon` container + OSM extract |
+| Routes | paid per request | $0 (OSRM public) | `osrm-backend` container + PBF extract |
+| API keys/secret in browser | key required, must be protected | **none anywhere** | **none** |
+| Traffic data | included | not available yet | none (or paid feed) |
+| Lock-in | data licensed to Google | MIT/ODbL - fully ours | ours |
+| Privacy | Google sees every lookup | only our server sees requests | completely private |
+
+The public-API settings cost us **zero currency** today (they are community-hosted, so we owe them reasonable rate usage and graceful fallbacks - which we already log). Self-hosting is the "real product" version later - the exact same code paths, only the env vars change (`OSRM_API_BASE_URL` / `PHOTON_API_BASE_URL`).
+
 ---
 
 ## Things We Verified
@@ -801,6 +952,23 @@ We also confirmed in MongoDB that:
 
 - All existing users now carry a `role` (`mustafamubashir87@gmail.com` -> `admin`; others -> `passenger`).
 - The `roles` collection contains `passenger`, `driver`, and `admin` with correct permission arrays.
+
+Since the map/place/route/booking milestones (Steps 5-8), the same "verify against the real running server" discipline produced these checks:
+
+| What | How | Result |
+| --- | --- | --- |
+| Route preview | Picked Karachi Airport -> Dolmen Mall; `/api/routes` returns road polyline + `23.0 km · 25 min` | route drawn (387 geometry points), camera fitted, `FROM`/`TO` markers on screen |
+| Route discipline | Changed From/To repeatedly | exactly one request per change, stale results never overwrite newer ones |
+| Clearing | Deselected From/To | route, markers removed; no new route request fired |
+| Error: no location | "Search for a ride" with empty From | friendly inline error, no network call |
+| Error: routing down | server pointed at dead OSRM URL | clean `500 {"success":false,"message":"Route service is unavailable"}`, logged |
+| Place search | typed "Dolmen" in To field | suggestions returned, marker placed on selection |
+| Booking (passenger) | real passenger clicks "Search for a ride" | booking POSTed, `201` with ID, confirmation shown |
+| Booking (admin) | RBAC unit against real middleware + seeded roles | admin `booking:create` allowed (after the 403 fix); driver still denied |
+| Theme persistence | toggled map dark -> light after routing | route still drawn in both themes, no duplicate layers, no console exceptions |
+| Current location | fake GPS position via CDP, tapped "Use my current location" | From = "Current location", FROM marker, route fired `from=66.9817,24.8004`, `7.2 km · 11 min` |
+
+Test bookings are deleted after each run (the DB is kept clean).
 
 ### A debugging note that embarrassed us, briefly
 
@@ -859,18 +1027,20 @@ Also, because the root repository is the real one, it needs its own root-level `
 
 ## What Comes Next
 
-The natural next milestone, in order:
+The natural next milestones, in order:
 
-1. **Booking model** - `server/src/models/booking.model.ts` is currently empty. Implement it (driver, passenger, pickup/dropoff locations, fare, status, timestamps).
-2. **Real booking endpoints** - replace the placeholder handlers in `passenger.router.ts` and `driver.router.ts` with real create/list/update flows, still protected by the RBAC guards.
-3. **Driver accepting rides** - add the `booking:update` flow for drivers.
-4. **Wire the dashboard** - connect the client "Book a Ride" flow to `POST /api/v1/passenger/bookings` and show real history from `GET /api/v1/passenger/bookings`.
-5. **Geo queries** - use the new `location` field + `2dsphere` index for "nearest driver" matching.
-6. **Implement the decided matching flow** - apply the exact flow locked in the [Booking Architecture](#booking-architecture-and-the-flow) section: compute fare with the simple base+per-km algorithm and Haversine distance at booking creation, then match nearby active drivers with the GeoHashing approach.
-7. **Driver live-location + notification** - drivers push their `(latitude, longitude)` periodically; the server geohashes it and notifies only the matched drivers when a new booking lands (the "waiting for driver response" screen).
-8. **Feedback after the ride** - capture rating + comment on completed bookings and aggregate driver ratings later.
+1. **Driver accepting rides** - a real `booking:update` flow so a matched driver can set `pending -> confirmed` (the booking model and creation already exist; the update path is still a stub).
+2. **Road-distance pricing** - replace the straight-line Haversine fare with the OSRM route distance, then add the per-class multipliers (`Ride / Ride XL / Lux`) to replace the static price chips with real estimates (see [the fare roadmap](#5-the-fare-side-our-own-pricing-not-googles)).
+3. **Geo queries + matching** - use the `location` GeoJSON field + `2dsphere` index and the GeoHashing plan from [Booking Architecture](#booking-architecture-and-the-flow) to map a pickup to nearby active drivers; notify only matched drivers (the "waiting for driver response" screen).
+4. **Live trip screen** - driver accepts -> confirmed; passenger sees live tracking (driver position push + MapLibre), the trip detail strip, and cancellation.
+5. **Driver live-location** - drivers push `(latitude, longitude)` periodically; the server geohashes and stores it on the driver's user document.
+6. **Feedback after the ride** - rating + comment on `completed` bookings, aggregate driver ratings later.
+7. **Booking list / history** - make `GET /api/v1/passenger/bookings` real and wire the History tab to it (right now history is mock data).
+8. **Ops readiness for maps** - self-host OSRM and Photon (env-var switch already planned), operate our own tile server or an approved hosted vector provider, then add route alternatives + turn-by-turn steps.
 9. **Mobile client (future)** - the auth is already transport-agnostic: `/api/auth/*` + `/api/v1/*` work for any client. A mobile app can later call the same endpoints with the session token as a bearer header (stored in iOS Keychain / Android Keystore) or an OAuth/PKCE flow, with zero changes to sessions, roles, or RBAC - see the [mobile hints](#future-the-same-auth-on-a-mobile-client-hints-not-plans) section.
+
+The one deliberate gap, restated plainly: **live traffic data**. OSM-based routing gives ETA for typical road speeds; real-time congestion needs a paid feed or a self-gathered dataset. We inherit this honesty from the open world just as every non-Google nav product does.
 
 ---
 
-*Last updated: 2026-09-17. This project is a work in progress - every section above reflects the code as it currently exists.*
+*Last updated: 2026-09-18. This project is a work in progress - every section above reflects the code as it currently exists.*

@@ -2,9 +2,11 @@ import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
 import Map from "@/components/Map";
+import PlaceSearchField from "@/components/PlaceSearchField";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useRoute } from "@/hooks/use-route";
+import type { PlaceResult, SelectedLocation } from "@/lib/places-api";
 import {
   Home,
   History,
@@ -90,6 +92,19 @@ function Initials({ name, email }: { name?: string; email?: string }) {
   return source.charAt(0).toUpperCase();
 }
 
+function formatDistance(meters: number) {
+  if (!Number.isFinite(meters)) return "";
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+  return `${Math.round(meters)} m`;
+}
+
+function formatDuration(seconds: number) {
+  if (!Number.isFinite(seconds)) return "";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 1) return `${Math.round(seconds)} sec`;
+  return `${minutes} min`;
+}
+
 export default function Dashboard() {
   const { data: session } = authClient.useSession();
   const user = (session as any)?.user;
@@ -98,6 +113,92 @@ export default function Dashboard() {
     (typeof vehicleTypes)[number]["id"]
   >("premium");
   const [rideBooked, setRideBooked] = useState(false);
+  const [fromLocation, setFromLocation] = useState<SelectedLocation | null>(null);
+  const [toLocation, setToLocation] = useState<SelectedLocation | null>(null);
+  const [bookingState, setBookingState] = useState<
+    "idle" | "loading" | "error"
+  >("idle");
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [bookingId, setBookingId] = useState<string | null>(null);
+  const { route, status: routeStatus, error: routeError } = useRoute(
+    fromLocation,
+    toLocation,
+  );
+
+  const handleSelectFrom = (place: PlaceResult) => {
+    setFromLocation({
+      id: place.id,
+      name: place.name,
+      displayName: place.displayName,
+      latitude: place.latitude,
+      longitude: place.longitude,
+    });
+    if (toLocation) setBookingError(null);
+  };
+
+  const handleSelectTo = (place: PlaceResult) => {
+    setToLocation({
+      id: place.id,
+      name: place.name,
+      displayName: place.displayName,
+      latitude: place.latitude,
+      longitude: place.longitude,
+    });
+    if (fromLocation) setBookingError(null);
+  };
+
+  const handleDeselectFrom = () => {
+    setFromLocation(null);
+    if (toLocation) setBookingError(null);
+  };
+
+  const handleDeselectTo = () => {
+    setToLocation(null);
+    if (fromLocation) setBookingError(null);
+  };
+
+  const handleBookRide = async () => {
+    if (!fromLocation || !toLocation) {
+      setBookingError("Select both your pickup and destination first.");
+      setBookingState("error");
+      return;
+    }
+    setBookingState("loading");
+    setBookingError(null);
+    try {
+      const response = await fetch("/api/v1/passenger/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: {
+            latitude: fromLocation.latitude,
+            longitude: fromLocation.longitude,
+          },
+          destination: {
+            latitude: toLocation.latitude,
+            longitude: toLocation.longitude,
+          },
+        }),
+      });
+      let data: { success?: boolean; message?: string; booking?: { _id?: string } } = {};
+      try {
+        data = (await response.json()) as typeof data;
+      } catch {
+        // fall through with empty data
+      }
+      if (!response.ok || !data.success) {
+        throw new Error(data.message ?? "Could not create your booking.");
+      }
+      setBookingId(data.booking?._id ?? null);
+      setRideBooked(true);
+      setBookingState("idle");
+    } catch (e) {
+      setBookingState("error");
+      setBookingError(
+        e instanceof Error ? e.message : "Could not create your booking.",
+      );
+    }
+  };
 
   const handleSignOut = async () => {
     await authClient.signOut({ disableRedirect: false, callbackURL: "/login" });
@@ -231,43 +332,63 @@ export default function Dashboard() {
                   style={{ position: "relative" }}
                 >
                   {/* From */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-col items-center shrink-0">
-                      <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                      <span className="w-px h-8 bg-border mt-1" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1">
-                        From
-                      </p>
-                      <Input
-                        id="pickup"
-                        placeholder="Current location"
-                        className="border-0 bg-transparent p-0 h-auto text-[13.5px] font-medium placeholder:text-muted-foreground/50 focus-visible:ring-0 focus-visible:border-0"
-                      />
-                    </div>
-                    <MapPin className="h-4 w-4 text-primary shrink-0" />
-                  </div>
+                  <PlaceSearchField
+                    id="pickup"
+                    label="From"
+                    placeholder="Current location"
+                    icon={<MapPin className="h-4 w-4 text-primary shrink-0" />}
+                    variant="from"
+                    selectedLocation={fromLocation}
+                    onSelectLocation={handleSelectFrom}
+                    onDeselectLocation={handleDeselectFrom}
+                  />
 
                   <div className="ml-[18px] h-px bg-border my-1" />
 
                   {/* To */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-col items-center shrink-0">
-                      <span className="h-2.5 w-2.5 rounded-[3px] bg-muted-foreground/60" />
+                  <PlaceSearchField
+                    id="dropoff"
+                    label="To"
+                    placeholder="Your destination"
+                    icon={<Navigation className="h-4 w-4 text-muted-foreground shrink-0" />}
+                    variant="to"
+                    selectedLocation={toLocation}
+                    onSelectLocation={handleSelectTo}
+                    onDeselectLocation={handleDeselectTo}
+                  />
+                </div>
+
+                {/* Route status */}
+                <div
+                  id="route-info"
+                  className="rounded-xl border border-border bg-card px-4 py-3"
+                >
+                  {routeStatus === "loading" && (
+                    <p className="text-[12px] text-muted-foreground">
+                      Calculating route…
+                    </p>
+                  )}
+                  {routeStatus === "success" && route && (
+                    <div className="flex items-center gap-2 text-[12px] text-foreground">
+                      <span className="font-semibold text-primary">
+                        {formatDistance(route.distance)}
+                      </span>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="font-medium">
+                        {formatDuration(route.duration)}
+                      </span>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1">
-                        To
-                      </p>
-                      <Input
-                        id="dropoff"
-                        placeholder="Your destination"
-                        className="border-0 bg-transparent p-0 h-auto text-[13.5px] font-medium placeholder:text-muted-foreground/50 focus-visible:ring-0 focus-visible:border-0"
-                      />
-                    </div>
-                    <Navigation className="h-4 w-4 text-muted-foreground shrink-0" />
-                  </div>
+                  )}
+                  {routeStatus === "error" && (
+                    <p className="text-[12px] text-destructive">
+                      {routeError ?? "Could not calculate a route."}
+                    </p>
+                  )}
+                  {routeStatus === "idle" && (
+                    <p className="text-[12px] text-muted-foreground">
+                      Select From and To to see the route.
+                    </p>
+                  )}
                 </div>
 
                 {/* Vehicle selector */}
@@ -330,10 +451,21 @@ export default function Dashboard() {
                   id="search-ride-btn"
                   size="lg"
                   className="w-full rounded-2xl text-[14px] font-semibold tracking-wide"
-                  onClick={() => setRideBooked(true)}
+                  onClick={handleBookRide}
+                  disabled={bookingState === "loading"}
                 >
-                  Search for a ride
+                  {bookingState === "loading"
+                    ? "Booking ride…"
+                    : "Search for a ride"}
                 </Button>
+                {bookingError && (
+                  <p
+                    id="booking-error"
+                    className="text-[12px] text-destructive"
+                  >
+                    {bookingError}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -341,7 +473,12 @@ export default function Dashboard() {
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* MapLibre map area */}
               <div className="relative flex-1 overflow-hidden bg-drio-deep">
-                <Map className="h-full w-full" />
+                <Map
+                  className="h-full w-full"
+                  from={fromLocation}
+                  to={toLocation}
+                  route={route}
+                />
 
                 {/* Warm accent overlay */}
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -400,10 +537,32 @@ export default function Dashboard() {
                   {/* Trip details strip */}
                   <div className="mt-4 grid grid-cols-4 gap-3">
                     {[
-                      { label: "Starting point", value: "Al Habib Apart..." },
-                      { label: "Destination", value: "Street No.52, De..." },
-                      { label: "Travel time", value: "45 mins" },
-                      { label: "Total fare", value: "$54.35" },
+                      {
+                        label: "Starting point",
+                        value:
+                          fromLocation?.displayName ??
+                          fromLocation?.name ??
+                          "Al Habib Apart...",
+                      },
+                      {
+                        label: "Destination",
+                        value:
+                          toLocation?.displayName ??
+                          toLocation?.name ??
+                          "Street No.52, De...",
+                      },
+                      {
+                        label: "Distance",
+                        value: route
+                          ? formatDistance(route.distance)
+                          : "—",
+                      },
+                      {
+                        label: "Travel time",
+                        value: route
+                          ? formatDuration(route.duration)
+                          : "45 mins",
+                      },
                     ].map((item) => (
                       <div
                         key={item.label}
@@ -418,6 +577,15 @@ export default function Dashboard() {
                       </div>
                     ))}
                   </div>
+
+                  {bookingId && (
+                    <p className="mt-3 text-[11px] text-muted-foreground">
+                      Booking confirmed · ID{" "}
+                      <span className="font-mono text-foreground/80">
+                        {bookingId}
+                      </span>
+                    </p>
+                  )}
                 </div>
               )}
 

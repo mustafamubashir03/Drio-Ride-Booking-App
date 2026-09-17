@@ -6,6 +6,8 @@ import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
 import logger from './config/logger.config';
 import { attachCorrelationIdMiddleware } from './middlewares/correlation.middleware';
+import placesRouter from './routers/v1/places.router';
+import routesRouter from './routers/routes.router';
 import { toNodeHandler } from "better-auth/node";
 import { auth, connectDB, client } from "./lib/auth";
 import { connectMongoose } from "./lib/mongoose";
@@ -36,6 +38,8 @@ app.use(express.json());
 app.use(attachCorrelationIdMiddleware);
 app.use('/api/v1', v1Router);
 app.use('/api/v2', v2Router);
+app.use('/api/places', placesRouter);
+app.use('/api/routes', routesRouter);
 
 app.get("/api/health/auth", async (_req, res) => {
     try {
