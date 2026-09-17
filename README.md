@@ -1,4 +1,5 @@
 # Drio - Premium Ride Booking Application
+<img width="1504" height="900" alt="DRIO" src="https://github.com/user-attachments/assets/a3150b25-1438-46b4-af4d-e4d81fc9ec32" />
 
 Welcome to the Drio ride booking application. This is a full-stack web app built with a React frontend, an Express + TypeScript backend, and MongoDB as the database. The project lives in this repository as two separate applications:
 
