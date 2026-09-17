@@ -55,18 +55,18 @@ export default function Login() {
       title="Your premium ride, every time."
       subtitle="Fast, dependable rides with a calm, refined experience from pickup to drop-off."
     >
-      <div className="mb-10 lg:hidden">
-        <Logo className="text-[1.75rem]" />
-        <p className="mt-2 text-sm text-muted-foreground">
+      <div className="mb-8 lg:hidden">
+        <Logo />
+        <p className="mt-2 text-[13px] text-muted-foreground">
           Your premium ride, every time.
         </p>
       </div>
 
-      <div className="mb-8">
-        <h2 className="font-serif text-2xl font-semibold tracking-tight text-foreground">
+      <div className="mb-7">
+        <h2 className="font-serif text-[1.75rem] font-bold tracking-tight text-foreground leading-tight">
           Welcome back
         </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 text-[13px] text-muted-foreground">
           Sign in to continue your journey.
         </p>
       </div>
@@ -83,9 +83,9 @@ export default function Login() {
         {googleLoading ? "Redirecting..." : "Log in with Google"}
       </Button>
 
-      <div className="my-6 flex items-center gap-3">
+      <div className="my-5 flex items-center gap-3">
         <Separator className="flex-1" />
-        <span className="text-xs font-medium text-muted-foreground">or</span>
+        <span className="text-[11px] font-medium text-muted-foreground">or continue with email</span>
         <Separator className="flex-1" />
       </div>
 
@@ -117,7 +117,10 @@ export default function Login() {
             <Label htmlFor="password" className="mb-0">
               Password
             </Label>
-            <a href="#" className="text-xs font-medium text-primary hover:text-drio-accent-hover">
+            <a
+              href="#"
+              className="text-xs font-medium text-primary hover:text-drio-accent-hover"
+            >
               Forgot password?
             </a>
           </div>
@@ -132,14 +135,22 @@ export default function Login() {
           />
         </div>
 
-        <Button type="submit" size="lg" className="w-full font-semibold" disabled={submitting}>
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full font-semibold"
+          disabled={submitting}
+        >
           {submitting ? "Signing in..." : "Sign in"}
         </Button>
       </form>
 
-      <p className="mt-8 text-center text-sm text-muted-foreground">
+      <p className="mt-7 text-center text-[13px] text-muted-foreground">
         Don&apos;t have an account?{" "}
-        <Link to="/register" className="font-semibold text-primary hover:text-drio-accent-hover">
+        <Link
+          to="/register"
+          className="font-semibold text-primary hover:text-drio-accent-hover transition-colors"
+        >
           Create one
         </Link>
       </p>

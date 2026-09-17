@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import AuthLayout from "@/components/AuthLayout";
 import Logo from "@/components/Logo";
@@ -8,15 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { MailCheck } from "lucide-react";
 
 export default function Register() {
-  const navigate = useNavigate();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [registered, setRegistered] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
 
   const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
@@ -33,6 +35,7 @@ export default function Register() {
       name,
       email,
       password,
+      callbackURL: `${window.location.origin}/dashboard`,
     });
 
     if (error) {
@@ -41,7 +44,21 @@ export default function Register() {
       return;
     }
 
-    navigate("/dashboard");
+    setRegistered(email);
+  };
+
+  const handleResend = async () => {
+    if (!registered) return;
+    setResending(true);
+    setError(null);
+    const { error } = await authClient.sendVerificationEmail({
+      email: registered,
+      callbackURL: `${window.location.origin}/dashboard`,
+    });
+    if (error) {
+      setError(error.message ?? "Unable to resend the verification email.");
+    }
+    setResending(false);
   };
 
   const handleGoogleSignUp = async () => {
@@ -58,23 +75,82 @@ export default function Register() {
     }
   };
 
+  if (registered) {
+    return (
+      <AuthLayout
+        title="Join Drio today."
+        subtitle="Create your account and start riding in minutes. Your premium experience awaits."
+      >
+        <div className="mb-8 lg:hidden">
+          <Logo />
+          <p className="mt-2 text-[13px] text-muted-foreground">
+            Your premium ride, every time.
+          </p>
+        </div>
+
+        <div className="flex flex-col items-center text-center">
+          <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/15">
+            <MailCheck className="h-7 w-7 text-primary" />
+          </div>
+          <h2 className="font-serif text-[1.75rem] font-bold tracking-tight text-foreground leading-tight">
+            Check your inbox
+          </h2>
+          <p className="mt-2 text-[13px] text-muted-foreground leading-relaxed">
+            We sent a verification link to{" "}
+            <span className="font-medium text-foreground">{registered}</span>.
+            <br />
+            Click it to confirm your email and finish setting up your account.
+          </p>
+
+          {error && (
+            <div
+              role="alert"
+              className="mt-5 w-full rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+            >
+              {error}
+            </div>
+          )}
+
+          <Button
+            variant="outline"
+            className="mt-6 w-full font-medium"
+            onClick={handleResend}
+            disabled={resending}
+          >
+            {resending ? "Sending..." : "Resend verification email"}
+          </Button>
+
+          <p className="mt-6 text-[13px] text-muted-foreground">
+            Already verified?{" "}
+            <Link
+              to="/login"
+              className="font-semibold text-primary hover:text-drio-accent-hover transition-colors"
+            >
+              Sign in
+            </Link>
+          </p>
+        </div>
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout
       title="Join Drio today."
       subtitle="Create your account and start riding in minutes. Your premium experience awaits."
     >
-      <div className="mb-10 lg:hidden">
-        <Logo className="text-[1.75rem]" />
-        <p className="mt-2 text-sm text-muted-foreground">
+      <div className="mb-8 lg:hidden">
+        <Logo />
+        <p className="mt-2 text-[13px] text-muted-foreground">
           Your premium ride, every time.
         </p>
       </div>
 
-      <div className="mb-8">
-        <h2 className="font-serif text-2xl font-semibold tracking-tight text-foreground">
+      <div className="mb-7">
+        <h2 className="font-serif text-[1.75rem] font-bold tracking-tight text-foreground leading-tight">
           Create your account
         </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 text-[13px] text-muted-foreground">
           Join Drio and get moving in minutes.
         </p>
       </div>
@@ -91,9 +167,9 @@ export default function Register() {
         {googleLoading ? "Redirecting..." : "Sign up with Google"}
       </Button>
 
-      <div className="my-6 flex items-center gap-3">
+      <div className="my-5 flex items-center gap-3">
         <Separator className="flex-1" />
-        <span className="text-xs font-medium text-muted-foreground">or</span>
+        <span className="text-[11px] font-medium text-muted-foreground">or continue with email</span>
         <Separator className="flex-1" />
       </div>
 
@@ -146,14 +222,22 @@ export default function Register() {
           />
         </div>
 
-        <Button type="submit" size="lg" className="w-full font-semibold" disabled={submitting}>
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full font-semibold"
+          disabled={submitting}
+        >
           {submitting ? "Creating account..." : "Create account"}
         </Button>
       </form>
 
-      <p className="mt-8 text-center text-sm text-muted-foreground">
+      <p className="mt-7 text-center text-[13px] text-muted-foreground">
         Already have an account?{" "}
-        <Link to="/login" className="font-semibold text-primary hover:text-drio-accent-hover">
+        <Link
+          to="/login"
+          className="font-semibold text-primary hover:text-drio-accent-hover transition-colors"
+        >
           Sign in
         </Link>
       </p>

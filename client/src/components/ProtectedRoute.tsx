@@ -7,8 +7,8 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (isPending) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-drio-bg">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-drio-surface border-t-drio-accent" />
+      <div className="flex min-h-dvh items-center justify-center bg-background">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary" />
       </div>
     );
   }

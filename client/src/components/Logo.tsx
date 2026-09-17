@@ -1,7 +1,8 @@
 export default function Logo({ className = "" }: { className?: string }) {
   return (
     <span
-      className={`font-serif text-2xl font-semibold tracking-wide text-drio-accent ${className}`}
+      className={`font-serif font-bold tracking-tight text-foreground ${className}`}
+      style={{ fontSize: "1.6rem", letterSpacing: "-0.03em" }}
     >
       Drio
     </span>
