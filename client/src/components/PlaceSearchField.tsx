@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
-import { LocateFixed } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Crosshair, LocateFixed, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePlaceSearch } from "@/hooks/use-place-search";
 import type { PlaceResult, SelectedLocation } from "@/lib/places-api";
@@ -14,6 +14,8 @@ interface PlaceSearchFieldProps {
   selectedLocation: SelectedLocation | null;
   onSelectLocation: (place: PlaceResult) => void;
   onDeselectLocation: () => void;
+  pinActive?: boolean;
+  onPinToggle?: () => void;
 }
 
 export default function PlaceSearchField({
@@ -25,12 +27,25 @@ export default function PlaceSearchField({
   selectedLocation,
   onSelectLocation,
   onDeselectLocation,
+  pinActive = false,
+  onPinToggle,
 }: PlaceSearchFieldProps) {
   const placeSearch = usePlaceSearch();
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
   const [geoBusy, setGeoBusy] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
+  const geoBusyRef = useRef(false);
+
+  useEffect(() => {
+    geoBusyRef.current = geoBusy;
+  }, [geoBusy]);
+
+  const displayValue = focused
+    ? text
+    : selectedLocation
+      ? selectedLocation.name
+      : text;
 
   const handleChange = (value: string) => {
     setText(value);
@@ -47,16 +62,19 @@ export default function PlaceSearchField({
     setFocused(false);
   };
 
-  const handleUseCurrentLocation = () => {
-    setGeoError(null);
-    if (!("geolocation" in navigator)) {
-      setGeoError("Geolocation is not supported by this browser.");
-      return;
-    }
+  const handleClear = () => {
+    onDeselectLocation();
+    setText("");
+    placeSearch.reset();
+    setFocused(false);
+  };
+
+  const requestLocation = () => {
     setGeoBusy(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
+        setGeoBusy(false);
         handleSelectPlace({
           id: "current-location",
           name: "Current location",
@@ -64,10 +82,10 @@ export default function PlaceSearchField({
           latitude,
           longitude,
         });
-        setGeoBusy(false);
       },
       (err) => {
         setGeoBusy(false);
+        setFocused(true);
         if (err.code === 1) setGeoError("Location permission denied.");
         else if (err.code === 2) setGeoError("Location currently unavailable.");
         else if (err.code === 3) setGeoError("Location request timed out.");
@@ -75,6 +93,35 @@ export default function PlaceSearchField({
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
     );
+  };
+
+  const handleUseCurrentLocation = () => {
+    setGeoError(null);
+    setFocused(true);
+    if (!("geolocation" in navigator)) {
+      setGeoError("Geolocation is not supported by this browser.");
+      return;
+    }
+    const permissions = (
+      navigator as { permissions?: { query: (desc: PermissionDescriptor) => Promise<PermissionStatus> } }
+    ).permissions;
+    if (permissions?.query) {
+      permissions
+        .query({ name: "geolocation" })
+        .then((status) => {
+          if (status.state === "denied") {
+            setGeoError(
+              "Location access is blocked for this site. Allow location in your browser settings, then try again.",
+            );
+            setFocused(true);
+            return;
+          }
+          requestLocation();
+        })
+        .catch(() => requestLocation());
+    } else {
+      requestLocation();
+    }
   };
 
   return (
@@ -90,13 +137,13 @@ export default function PlaceSearchField({
         </div>
       )}
 
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1">
           {label}
         </p>
         <Input
           id={id}
-          value={text}
+          value={displayValue}
           onChange={(e) => handleChange(e.target.value)}
           onFocus={() => {
             setFocused(true);
@@ -104,15 +151,55 @@ export default function PlaceSearchField({
               placeSearch.setQuery(text);
             }
           }}
-          onBlur={() => window.setTimeout(() => setFocused(false), 120)}
+          onBlur={() =>
+            window.setTimeout(() => {
+              if (!geoBusyRef.current) setFocused(false);
+            }, 120)
+          }
           placeholder={placeholder}
           autoComplete="off"
           className="border-0 bg-transparent p-0 h-auto text-[13.5px] font-medium placeholder:text-muted-foreground/50 focus-visible:ring-0 focus-visible:border-0"
         />
       </div>
-      {icon}
 
-      {(placeSearch.status !== 'idle' || (variant === 'from' && focused)) && (
+      <div className="flex items-center gap-1 shrink-0">
+        {selectedLocation && (
+          <button
+            type="button"
+            id={`${id}-clear`}
+            onClick={handleClear}
+            aria-label={`Remove ${label}`}
+            title={`Remove ${label}`}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {onPinToggle && (
+          <button
+            type="button"
+            id={`${id}-pin`}
+            onClick={onPinToggle}
+            aria-label={`Place ${label} on the map`}
+            title={
+              pinActive
+                ? `Done placing ${label} on the map`
+                : `Place ${label} on the map`
+            }
+            className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
+              pinActive
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground/60 hover:bg-secondary hover:text-foreground"
+            }`}
+          >
+            <Crosshair className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {icon}
+      </div>
+
+      {(placeSearch.status !== 'idle' ||
+        (variant === 'from' && (focused || geoBusy || geoError))) && (
         <div className="absolute left-0 right-0 top-full z-30 mt-2 rounded-xl border border-border bg-popover p-0 overflow-hidden shadow-2xl">
           {variant === "from" && (
             <button

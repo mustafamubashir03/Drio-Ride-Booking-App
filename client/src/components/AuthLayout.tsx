@@ -5,9 +5,10 @@ type AuthLayoutProps = {
   children: ReactNode;
   title: string;
   subtitle: string;
+  badge?: string;
 };
 
-export default function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
+export default function AuthLayout({ children, title, subtitle, badge }: AuthLayoutProps) {
   return (
     <div className="flex min-h-dvh bg-background">
       {/* ── Left branding panel ─────────────────────────────────── */}
@@ -30,6 +31,11 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
 
         {/* Bottom copy */}
         <div className="relative mt-auto px-10 pb-12">
+          {badge && (
+            <span className="inline-block rounded-full bg-primary/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary mb-3">
+              {badge}
+            </span>
+          )}
           <p className="bg-gradient-to-r from-drio-accent-light to-drio-accent bg-clip-text font-serif text-[4rem] leading-none font-extrabold tracking-tight text-transparent">
             Drio
           </p>

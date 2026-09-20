@@ -12,8 +12,13 @@ import { toNodeHandler } from "better-auth/node";
 import { auth, connectDB, client } from "./lib/auth";
 import { connectMongoose } from "./lib/mongoose";
 import { seedRbac } from "./lib/rbac.seed";
+import { Server } from 'socket.io';
+import http from 'http'
+import { initSocket } from './utils/sockets/socket';
 
 const app = express();
+const server = http.createServer(app)
+const io = new Server(server)
 
 const localhostOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
@@ -73,6 +78,10 @@ connectDB().then(async () => {
         logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
         logger.info(`Press Ctrl+C to stop the server.`);
     });
+    server.listen(serverConfig.SOCKET_PORT, () => {
+        logger.info(`Socket server is running on http://localhost:${serverConfig.SOCKET_PORT}`)
+    })
+    initSocket(io)
 }).catch((err) => {
     logger.error("Failed to start server", { error: (err as Error).message });
     process.exit(1);

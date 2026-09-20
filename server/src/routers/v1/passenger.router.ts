@@ -1,6 +1,6 @@
 import express from 'express';
 import { requireAuth, requireRole, requirePermission } from '../../middlewares/rbac.middleware';
-import { createBookingController } from '../../controllers/passenger.controller';
+import { createBookingController, listBookingsController } from '../../controllers/passenger.controller';
 
 const passengerRouter = express.Router();
 
@@ -14,9 +14,7 @@ passengerRouter.get(
     '/bookings',
     requireRole('passenger', 'driver', 'admin'),
     requirePermission('booking:list'),
-    (_req, res) => {
-        res.status(200).json({ success: true, message: 'Booking list (passenger scope)' });
-    }
+    listBookingsController
 );
 
 passengerRouter.post(

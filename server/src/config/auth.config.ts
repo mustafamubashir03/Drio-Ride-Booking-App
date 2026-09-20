@@ -8,6 +8,7 @@ type AuthConfig = {
     googleClientId: string
     googleClientSecret: string
     trustedOrigins: string[]
+    disableEmailVerification: boolean
 }
 
 const defaultTrustedOrigins = [
@@ -23,4 +24,7 @@ export const authConfig: AuthConfig = {
     trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS
         ? process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean)
         : defaultTrustedOrigins,
+    disableEmailVerification:
+        process.env.NODE_ENV !== "production" &&
+        process.env.DRIO_DISABLE_EMAIL_VERIFICATION === "true",
 }

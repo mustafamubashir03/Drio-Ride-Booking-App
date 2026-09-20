@@ -42,7 +42,8 @@ export const auth = betterAuth({
     emailAndPassword: {
         enabled: true,
         minPasswordLength: 8,
-        requireEmailVerification: true,
+        requireEmailVerification: !authConfig.disableEmailVerification,
+        autoSignIn: authConfig.disableEmailVerification === false,
     },
     emailVerification: {
         sendOnSignUp: true,

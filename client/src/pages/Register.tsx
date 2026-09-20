@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import AuthLayout from "@/components/AuthLayout";
 import Logo from "@/components/Logo";
@@ -11,6 +11,12 @@ import { Separator } from "@/components/ui/separator";
 import { MailCheck } from "lucide-react";
 
 export default function Register() {
+  const [searchParams] = useSearchParams();
+  const rawNext = searchParams.get("next");
+  const redirectTo =
+    rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//")
+      ? rawNext
+      : "/dashboard";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +41,7 @@ export default function Register() {
       name,
       email,
       password,
-      callbackURL: `${window.location.origin}/dashboard`,
+      callbackURL: `${window.location.origin}${redirectTo}`,
     });
 
     if (error) {
@@ -53,7 +59,7 @@ export default function Register() {
     setError(null);
     const { error } = await authClient.sendVerificationEmail({
       email: registered,
-      callbackURL: `${window.location.origin}/dashboard`,
+      callbackURL: `${window.location.origin}${redirectTo}`,
     });
     if (error) {
       setError(error.message ?? "Unable to resend the verification email.");
@@ -67,7 +73,7 @@ export default function Register() {
     try {
       await authClient.signIn.social({
         provider: "google",
-        callbackURL: `${window.location.origin}/dashboard`,
+        callbackURL: `${window.location.origin}${redirectTo}`,
       });
     } catch {
       setError("Google sign-in failed. Make sure the API server is running.");
@@ -123,7 +129,7 @@ export default function Register() {
           <p className="mt-6 text-[13px] text-muted-foreground">
             Already verified?{" "}
             <Link
-              to="/login"
+              to={`/login?next=${encodeURIComponent(redirectTo)}`}
               className="font-semibold text-primary hover:text-drio-accent-hover transition-colors"
             >
               Sign in
@@ -241,6 +247,25 @@ export default function Register() {
           Sign in
         </Link>
       </p>
+
+      <div className="mt-6 rounded-xl border border-border bg-muted/40 px-5 py-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[14px] font-semibold text-foreground">
+              Want to join as a driver?
+            </p>
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+              You can apply to drive with Drio using this same account.
+            </p>
+          </div>
+          <Link
+            to="/driver/register"
+            className="shrink-0 whitespace-nowrap font-semibold text-primary hover:text-drio-accent-hover transition-colors"
+          >
+            Driver Registration
+          </Link>
+        </div>
+      </div>
     </AuthLayout>
   );
 }

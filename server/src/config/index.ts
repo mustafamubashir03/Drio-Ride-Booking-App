@@ -1,7 +1,8 @@
 import dotenv from 'dotenv';
 
 type ServerConfig = {
-    PORT: number
+    PORT: number,
+    SOCKET_PORT: number
 }
 
 function loadEnv() {
@@ -12,5 +13,6 @@ function loadEnv() {
 loadEnv();
 
 export const serverConfig: ServerConfig = {
-    PORT: Number(process.env.PORT) || 3000
+    PORT: Number(process.env.PORT) || 3000,
+    SOCKET_PORT: Number(process.env.SOCKET_PORT) || 3001,
 };

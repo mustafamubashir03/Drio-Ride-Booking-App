@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
 import Map from "@/components/Map";
@@ -6,13 +6,12 @@ import PlaceSearchField from "@/components/PlaceSearchField";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRoute } from "@/hooks/use-route";
+import { fetchBookings, type BookingRecord, type BookingStatus } from "@/lib/bookings-api";
 import type { PlaceResult, SelectedLocation } from "@/lib/places-api";
 import {
   Home,
   History,
   User as UserIcon,
-  Zap,
-  Shield,
   Clock,
   MapPin,
   Navigation,
@@ -25,67 +24,63 @@ import {
   Circle,
   CircleDollarSign,
 } from "lucide-react";
+import { AccountSwitcher } from "@/components/AccountSwitcher";
 
 const navItems = [
-  { icon: Home, label: "Home", id: "home" },
-  { icon: History, label: "History", id: "history" },
-  { icon: UserIcon, label: "Account", id: "account" },
+  { icon: Home, label: "Home", id: "home", accent: "primary" },
+  { icon: History, label: "History", id: "history", accent: "blue" },
+  { icon: UserIcon, label: "Account", id: "account", accent: "violet" },
 ] as const;
 
 type Tab = (typeof navItems)[number]["id"];
 
+const navAccentStyles: Record<
+  (typeof navItems)[number]["accent"],
+  { button: string; chip: string; ident: string }
+> = {
+  primary: {
+    button: "bg-primary/12 text-primary",
+    chip: "bg-primary/15 text-primary",
+    ident: "bg-primary",
+  },
+  blue: {
+    button: "bg-drio-blue/12 text-drio-blue",
+    chip: "bg-drio-blue/15 text-drio-blue",
+    ident: "bg-drio-blue",
+  },
+  violet: {
+    button: "bg-drio-violet/12 text-drio-violet",
+    chip: "bg-drio-violet/15 text-drio-violet",
+    ident: "bg-drio-violet",
+  },
+};
+
 const vehicleTypes = [
-  { id: "premium", label: "Ride", icon: Car, eta: "4 min", price: "$8–12" },
-  { id: "suv", label: "Ride XL", icon: Car, eta: "6 min", price: "$14–18" },
-  { id: "lux", label: "Lux", icon: Car, eta: "9 min", price: "$22–30" },
+  { id: "premium", label: "Ride", icon: Car, eta: "4 min", price: "$8–12", accent: "primary" },
+  { id: "suv", label: "Ride XL", icon: Car, eta: "6 min", price: "$14–18", accent: "blue" },
+  { id: "lux", label: "Lux", icon: Car, eta: "9 min", price: "$22–30", accent: "violet" },
 ] as const;
 
-const mockHistory = [
-  {
-    id: "1",
-    date: "Feb 23, 2024",
-    from: "Al Zaid Hotel, Road 57, National Road",
-    to: "Street No.20, Section 60A",
-    price: "$54.35",
-    duration: "45 mins",
-    car: "RX 300",
-    color: "White",
-    image: "https://i.imgur.com/8mYaK3g.png",
+const vehicleAccentStyles: Record<
+  (typeof vehicleTypes)[number]["accent"],
+  { selectedCard: string; iconSelected: string; iconIdle: string }
+> = {
+  primary: {
+    selectedCard: "border-primary/40 bg-primary/10 ring-1 ring-primary/20",
+    iconSelected: "text-primary",
+    iconIdle: "text-primary/70",
   },
-  {
-    id: "2",
-    date: "Jan 9, 2024",
-    from: "Al Majeed Restaurant, Jamshed Road, Karachi",
-    to: "Shah Faisal Colony, Street No.1",
-    price: "$38.20",
-    duration: "32 mins",
-    car: "Lexus ES",
-    color: "Black",
-    image: "https://i.imgur.com/8mYaK3g.png",
+  blue: {
+    selectedCard: "border-drio-blue/40 bg-drio-blue/10 ring-1 ring-drio-blue/20",
+    iconSelected: "text-drio-blue",
+    iconIdle: "text-drio-blue/70",
   },
-  {
-    id: "3",
-    date: "Nov 28, 2023",
-    from: "Regal Chowk, Saddar, Karachi",
-    to: "Home, Ali Matwen, Abbotabad",
-    price: "$72.10",
-    duration: "68 mins",
-    car: "BMW 5",
-    color: "Black",
-    image: "https://i.imgur.com/8mYaK3g.png",
+  violet: {
+    selectedCard: "border-drio-violet/40 bg-drio-violet/10 ring-1 ring-drio-violet/20",
+    iconSelected: "text-drio-violet",
+    iconIdle: "text-drio-violet/70",
   },
-  {
-    id: "4",
-    date: "March 14, 2023",
-    from: "Al Habib Apartments, Block 7",
-    to: "Street No.52, DHA Phase 2",
-    price: "$29.90",
-    duration: "28 mins",
-    car: "Camry",
-    color: "Silver",
-    image: "https://i.imgur.com/8mYaK3g.png",
-  },
-];
+};
 
 function Initials({ name, email }: { name?: string; email?: string }) {
   const source = name ?? email ?? "U";
@@ -105,9 +100,46 @@ function formatDuration(seconds: number) {
   return `${minutes} min`;
 }
 
+function formatCoordinates(lat: number, lng: number) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "—";
+  return `Lat ${lat.toFixed(4)}, Lng ${lng.toFixed(4)}`;
+}
+
+function formatPlace(place: {
+  name?: string;
+  displayName?: string;
+  latitude: number;
+  longitude: number;
+}) {
+  if (place.displayName || place.name) {
+    return place.displayName ?? place.name!;
+  }
+  return formatCoordinates(place.latitude, place.longitude);
+}
+
+function formatTripDate(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+const statusBadgeStyles: Record<BookingStatus, string> = {
+  pending: "bg-amber-500/15 text-amber-500 border-amber-500/25",
+  confirmed: "bg-drio-success/15 text-drio-success border-drio-success/25",
+  arriving: "bg-amber-500/15 text-amber-500 border-amber-500/25",
+  arrived: "bg-primary/15 text-primary border-primary/25",
+  in_progress: "bg-drio-success/15 text-drio-success border-drio-success/25",
+  cancelled: "bg-muted/40 text-muted-foreground border-border",
+  completed: "bg-primary/15 text-primary border-primary/25",
+};
+
 export default function Dashboard() {
   const { data: session } = authClient.useSession();
-  const user = (session as any)?.user;
+  const user = (session as unknown as { user?: { name?: string; email?: string; image?: string } })?.user;
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [vehicle, setVehicle] = useState<
     (typeof vehicleTypes)[number]["id"]
@@ -120,11 +152,101 @@ export default function Dashboard() {
   >("idle");
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
+  const [history, setHistory] = useState<BookingRecord[]>([]);
+  const [historyStatus, setHistoryStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const historyRequestSeq = useRef(0);
+  const fromLocationRef = useRef(fromLocation);
   const { route, status: routeStatus, error: routeError } = useRoute(
     fromLocation,
     toLocation,
   );
 
+  useEffect(() => {
+    fromLocationRef.current = fromLocation;
+  }, [fromLocation]);
+
+  // Automatically resolve the passenger's current position on mount so the
+  // pickup field is pre-filled without pressing any button. Browsers show the
+  // geolocation prompt once; after the user allows it, location resolves
+  // silently on every visit.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      return;
+    }
+    let cancelled = false;
+    const resolve = () => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (cancelled || fromLocationRef.current) return;
+          const { latitude, longitude } = position.coords;
+          setFromLocation({
+            id: "current-location",
+            name: "Current location",
+            displayName: `Your current position · ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+            latitude,
+            longitude,
+          });
+        },
+        () => {
+          // permission denied / unavailable — the dropdown's manual
+          // "Use my current location" row remains as a fallback
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      );
+    };
+    const permissions = (
+      navigator as unknown as {
+        permissions?: {
+          query: (desc: PermissionDescriptor) => Promise<{ state: string }>;
+        };
+      }
+    ).permissions;
+    if (permissions?.query) {
+      permissions
+        .query({ name: "geolocation" })
+        .then((status) => {
+          if (cancelled) return;
+          if (status.state === "denied") return;
+          resolve();
+        })
+        .catch(() => resolve());
+    } else {
+      resolve();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadHistory = async () => {
+    const seq = ++historyRequestSeq.current;
+    setHistoryStatus("loading");
+    setHistoryError(null);
+    try {
+      const list = await fetchBookings();
+      if (seq !== historyRequestSeq.current) return;
+      setHistory(list);
+      setHistoryStatus("success");
+    } catch (e) {
+      if (seq !== historyRequestSeq.current) return;
+      setHistoryStatus("error");
+      setHistoryError(
+        e instanceof Error ? e.message : "Could not load your bookings.",
+      );
+    }
+  };
+
+  const handleTabClick = (id: Tab) => {
+    setActiveTab(id);
+    if (id === "history") {
+      void loadHistory();
+    }
+  };
+
+  const [mapPickMode, setMapPickMode] = useState<"from" | "to" | null>(null);
   const handleSelectFrom = (place: PlaceResult) => {
     setFromLocation({
       id: place.id,
@@ -157,6 +279,24 @@ export default function Dashboard() {
     if (fromLocation) setBookingError(null);
   };
 
+  const handleMapPick = (location: { latitude: number; longitude: number }) => {
+    const picked: SelectedLocation = {
+      id: "map-pin",
+      name: "Dropped pin",
+      displayName: `Dropped pin · ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`,
+      latitude: location.latitude,
+      longitude: location.longitude,
+    };
+    if (mapPickMode === "from") {
+      setFromLocation(picked);
+      if (toLocation) setBookingError(null);
+    } else if (mapPickMode === "to") {
+      setToLocation(picked);
+      if (fromLocation) setBookingError(null);
+    }
+    setMapPickMode(null);
+  };
+
   const handleBookRide = async () => {
     if (!fromLocation || !toLocation) {
       setBookingError("Select both your pickup and destination first.");
@@ -171,10 +311,14 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source: {
+            name: fromLocation.name,
+            displayName: fromLocation.displayName,
             latitude: fromLocation.latitude,
             longitude: fromLocation.longitude,
           },
           destination: {
+            name: toLocation.name,
+            displayName: toLocation.displayName,
             latitude: toLocation.latitude,
             longitude: toLocation.longitude,
           },
@@ -206,6 +350,19 @@ export default function Dashboard() {
 
   const selectedVehicle = vehicleTypes.find((v) => v.id === vehicle)!;
 
+  const historyGroups = history.reduce<
+    Array<{ dateLabel: string; items: BookingRecord[] }>
+  >((groups, booking) => {
+    const dateLabel = formatTripDate(booking.createdAt);
+    const last = groups[groups.length - 1];
+    if (last && last.dateLabel === dateLabel) {
+      last.items.push(booking);
+      return groups;
+    }
+    groups.push({ dateLabel, items: [booking] });
+    return groups;
+  }, []);
+
   return (
     <div className="flex min-h-dvh bg-background">
       {/* ── Sidebar ───────────────────────────────────────────────── */}
@@ -228,20 +385,21 @@ export default function Dashboard() {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
+            const accent = navAccentStyles[item.accent];
             return (
               <button
                 key={item.id}
                 type="button"
                 id={`nav-${item.id}`}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => handleTabClick(item.id)}
                 className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition-all duration-150 ${isActive
-                    ? "bg-primary/12 text-primary"
+                    ? accent.button
                     : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
                   }`}
               >
                 <span
                   className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${isActive
-                      ? "bg-primary/15 text-primary"
+                      ? accent.chip
                       : "bg-white/5 text-muted-foreground group-hover:text-foreground"
                     }`}
                 >
@@ -249,7 +407,7 @@ export default function Dashboard() {
                 </span>
                 {item.label}
                 {isActive && (
-                  <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
+                  <span className={`ml-auto h-1.5 w-1.5 rounded-full ${accent.ident}`} />
                 )}
               </button>
             );
@@ -282,14 +440,16 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
-          <button
-            onClick={handleSignOut}
-            id="signout-btn"
-            className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[12px] font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-colors"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            Sign out
-          </button>
+          <AccountSwitcher>
+            <button
+              onClick={handleSignOut}
+              id="signout-btn"
+              className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[12px] font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sign out
+            </button>
+          </AccountSwitcher>
         </div>
       </aside>
 
@@ -341,6 +501,10 @@ export default function Dashboard() {
                     selectedLocation={fromLocation}
                     onSelectLocation={handleSelectFrom}
                     onDeselectLocation={handleDeselectFrom}
+                    pinActive={mapPickMode === "from"}
+                    onPinToggle={() =>
+                      setMapPickMode(mapPickMode === "from" ? null : "from")
+                    }
                   />
 
                   <div className="ml-[18px] h-px bg-border my-1" />
@@ -355,6 +519,10 @@ export default function Dashboard() {
                     selectedLocation={toLocation}
                     onSelectLocation={handleSelectTo}
                     onDeselectLocation={handleDeselectTo}
+                    pinActive={mapPickMode === "to"}
+                    onPinToggle={() =>
+                      setMapPickMode(mapPickMode === "to" ? null : "to")
+                    }
                   />
                 </div>
 
@@ -399,6 +567,7 @@ export default function Dashboard() {
                   <div className="grid grid-cols-3 gap-2.5">
                     {vehicleTypes.map((v) => {
                       const isSelected = vehicle === v.id;
+                      const accent = vehicleAccentStyles[v.accent];
                       return (
                         <button
                           key={v.id}
@@ -406,14 +575,14 @@ export default function Dashboard() {
                           id={`vehicle-${v.id}`}
                           onClick={() => setVehicle(v.id)}
                           className={`flex flex-col items-start gap-1.5 rounded-2xl border p-3.5 text-left transition-all duration-200 ${isSelected
-                              ? "border-primary/40 bg-primary/10 ring-1 ring-primary/20"
+                              ? accent.selectedCard
                               : "border-border bg-card hover:border-border/80 hover:bg-secondary"
                             }`}
                         >
                           <Car
                             className={`h-5 w-5 ${isSelected
-                                ? "text-primary"
-                                : "text-muted-foreground"
+                                ? accent.iconSelected
+                                : accent.iconIdle
                               }`}
                           />
                           <span className="text-[13px] font-semibold text-foreground leading-tight">
@@ -478,6 +647,8 @@ export default function Dashboard() {
                   from={fromLocation}
                   to={toLocation}
                   route={route}
+                  pickMode={mapPickMode}
+                  onPickPoint={handleMapPick}
                 />
 
                 {/* Warm accent overlay */}
@@ -588,48 +759,6 @@ export default function Dashboard() {
                   )}
                 </div>
               )}
-
-              {/* Feature strip */}
-              {!rideBooked && (
-                <div className="border-t border-border bg-card px-6 py-4">
-                  <div className="grid grid-cols-3 gap-4">
-                    {[
-                      {
-                        icon: Zap,
-                        label: "Instant booking",
-                        color: "text-primary",
-                        bg: "bg-primary/10",
-                      },
-                      {
-                        icon: Shield,
-                        label: "Trusted drivers",
-                        color: "text-drio-success",
-                        bg: "bg-drio-success/10",
-                      },
-                      {
-                        icon: Clock,
-                        label: "Live tracking",
-                        color: "text-muted-foreground",
-                        bg: "bg-muted/40",
-                      },
-                    ].map((f) => {
-                      const Icon = f.icon;
-                      return (
-                        <div key={f.label} className="flex items-center gap-3">
-                          <span
-                            className={`flex h-8 w-8 items-center justify-center rounded-xl ${f.bg} shrink-0`}
-                          >
-                            <Icon className={`h-4 w-4 ${f.color}`} />
-                          </span>
-                          <p className="text-[12.5px] font-medium text-foreground">
-                            {f.label}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -639,7 +768,40 @@ export default function Dashboard() {
           <div className="flex flex-1 overflow-hidden">
             <div className="flex-1 overflow-y-auto p-8">
               <div className="max-w-3xl mx-auto space-y-6">
-                {mockHistory.length === 0 ? (
+                {(historyStatus === "idle" || historyStatus === "loading") && (
+                  <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-card px-6 py-20 text-center">
+                    <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                      <History className="h-7 w-7 text-primary animate-pulse" />
+                    </div>
+                    <p className="text-[15px] font-semibold text-foreground">
+                      Loading your trips…
+                    </p>
+                  </div>
+                )}
+
+                {historyStatus === "error" && (
+                  <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-destructive/30 bg-card px-6 py-20 text-center">
+                    <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+                      <History className="h-7 w-7 text-destructive" />
+                    </div>
+                    <p className="text-[15px] font-semibold text-destructive">
+                      Could not load your trips
+                    </p>
+                    <p className="mt-2 max-w-xs text-[13px] leading-relaxed text-muted-foreground">
+                      {historyError ??
+                        "Something went wrong while loading your trips."}
+                    </p>
+                    <Button
+                      size="sm"
+                      className="mt-6 font-semibold"
+                      onClick={() => void loadHistory()}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                )}
+
+                {historyStatus === "success" && historyGroups.length === 0 && (
                   <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-card px-6 py-20 text-center">
                     <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
                       <History className="h-7 w-7 text-primary" />
@@ -659,50 +821,61 @@ export default function Dashboard() {
                       Book a ride
                     </Button>
                   </div>
-                ) : (
+                )}
+
+                {historyStatus === "success" && historyGroups.length > 0 && (
                   <>
-                    {mockHistory.map((ride) => (
-                      <div key={ride.id}>
+                    {historyGroups.map((group, idx) => (
+                      <div key={idx}>
                         <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground mb-3">
-                          {ride.date}
+                          {group.dateLabel}
                         </p>
-                        <div className="rounded-2xl border border-border bg-card hover:border-border/80 transition-colors overflow-hidden">
-                          <div className="flex items-center gap-4 px-5 py-4">
-                            {/* Car thumbnail */}
-                            <div className="h-[58px] w-[90px] rounded-xl bg-secondary flex items-center justify-center shrink-0 overflow-hidden border border-border">
-                              <Car className="h-8 w-8 text-muted-foreground/40" />
-                            </div>
-
-                            {/* Route */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start gap-2.5 mb-2">
-                                <Circle className="h-2.5 w-2.5 fill-primary text-primary mt-1 shrink-0" />
-                                <p className="text-[13px] text-foreground font-medium leading-snug truncate">
-                                  {ride.from}
-                                </p>
+                        {group.items.map((booking) => (
+                          <div
+                            key={booking._id}
+                            title={`Booking ${booking._id}`}
+                            className="rounded-2xl border border-border bg-card hover:border-border/80 transition-colors overflow-hidden"
+                          >
+                            <div className="flex items-center gap-4 px-5 py-4">
+                              {/* Car thumbnail */}
+                              <div className="h-[58px] w-[90px] rounded-xl bg-secondary flex items-center justify-center shrink-0 overflow-hidden border border-border">
+                                <Car className="h-8 w-8 text-muted-foreground/40" />
                               </div>
-                              <div className="flex items-start gap-2.5">
-                                <MapPin className="h-3 w-3 text-muted-foreground mt-0.5 shrink-0" />
-                                <p className="text-[12.5px] text-muted-foreground leading-snug truncate">
-                                  {ride.to}
-                                </p>
-                              </div>
-                            </div>
 
-                            {/* Stats */}
-                            <div className="text-right shrink-0">
-                              <p className="text-[16px] font-sans font-bold text-foreground">
-                                {ride.price}
-                              </p>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">
-                                {ride.duration}
-                              </p>
-                              <span className="inline-block mt-1.5 rounded-full bg-secondary px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground border border-border">
-                                {ride.car}
-                              </span>
+                              {/* Route */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start gap-2.5 mb-2">
+                                  <Circle className="h-2.5 w-2.5 fill-primary text-primary mt-1 shrink-0" />
+                                  <p className="text-[13px] text-foreground font-medium leading-snug truncate">
+                                    {formatPlace(booking.source)}
+                                  </p>
+                                </div>
+                                <div className="flex items-start gap-2.5">
+                                  <MapPin className="h-3 w-3 text-muted-foreground mt-0.5 shrink-0" />
+                                  <p className="text-[12.5px] text-muted-foreground leading-snug truncate">
+                                    {formatPlace(booking.destination)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Stats */}
+                              <div className="text-right shrink-0">
+                                <p className="text-[16px] font-sans font-bold text-foreground">
+                                  —
+                                </p>
+                                <p className="text-[11px] text-muted-foreground mt-0.5">
+                                  —
+                                </p>
+                                <span
+                                  className={`inline-block mt-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold border ${statusBadgeStyles[booking.status]}`}
+                                  style={{ textTransform: "capitalize" }}
+                                >
+                                  {booking.status}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        ))}
                       </div>
                     ))}
                   </>
@@ -756,24 +929,27 @@ export default function Dashboard() {
                     label: "Saved places",
                     desc: "Home and work addresses",
                     icon: MapPin,
+                    iconColor: "text-primary",
                   },
                   {
                     label: "Payment methods",
                     desc: "Manage cards and wallets",
                     icon: CircleDollarSign,
+                    iconColor: "text-drio-success",
                   },
                   {
                     label: "Notifications",
                     desc: "Ride updates and offers",
                     icon: Clock,
+                    iconColor: "text-drio-blue",
                   },
-                ].map(({ label, desc, icon: Icon }) => (
+                ].map(({ label, desc, icon: Icon, iconColor }) => (
                   <button
                     key={label}
                     className="flex w-full items-center gap-4 px-6 py-4 text-left hover:bg-secondary/50 transition-colors group"
                   >
                     <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary border border-border">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      <Icon className={`h-4 w-4 ${iconColor}`} />
                     </span>
                     <div className="flex-1">
                       <p className="text-[13.5px] font-semibold text-foreground">

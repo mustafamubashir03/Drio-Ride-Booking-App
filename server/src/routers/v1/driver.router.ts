@@ -1,21 +1,47 @@
-import express from 'express';
-import { requireAuth, requireRole, requirePermission } from '../../middlewares/rbac.middleware';
+import express from 'express'
+import {
+    getDriverAvailabilityController,
+    updateDriverAvailabilityController,
+    updateLocationController,
+} from '../../controllers/driver.controller'
+import {
+    acceptDriverRideController,
+    cancelDriverRideController,
+    completeDriverRideController,
+    getDriverActiveRideController,
+    getDriverRideController,
+    listDriverRidesController,
+    markDriverArrivedController,
+    markDriverArrivingController,
+    startDriverRideController,
+} from '../../controllers/driver-ride.controller'
+import { getDriverEarningsController } from '../../controllers/driver-earnings.controller'
+import { requireAuth } from '../../middlewares/rbac.middleware'
+import { requireDriverCapability } from '../../middlewares/driver-capability.middleware'
+import { validateRequestBody } from '../../validators'
+import { driverAvailabilitySchema } from '../../validators/driver.validator'
 
-const driverRouter = express.Router();
+const driverRouter = express.Router()
 
-driverRouter.use(requireAuth);
+// All driver endpoints require an authenticated user with driver capability.
+driverRouter.use(requireAuth)
+driverRouter.use(requireDriverCapability)
 
-driverRouter.get('/profile', (req, res) => {
-    res.status(200).json({ success: true, user: req.authUser });
-});
+driverRouter.post('/location', updateLocationController)
 
-driverRouter.get(
-    '/rides',
-    requireRole('driver', 'admin'),
-    requirePermission('booking:list'),
-    (_req, res) => {
-        res.status(200).json({ success: true, message: 'Available rides (driver scope)' });
-    }
-);
+driverRouter.get('/status', getDriverAvailabilityController)
+driverRouter.put('/status', validateRequestBody(driverAvailabilitySchema), updateDriverAvailabilityController)
 
-export default driverRouter;
+driverRouter.get('/rides/active', getDriverActiveRideController)
+driverRouter.get('/rides', listDriverRidesController)
+driverRouter.get('/rides/:bookingId', getDriverRideController)
+driverRouter.post('/rides/:bookingId/accept', acceptDriverRideController)
+driverRouter.post('/rides/:bookingId/arriving', markDriverArrivingController)
+driverRouter.post('/rides/:bookingId/arrived', markDriverArrivedController)
+driverRouter.post('/rides/:bookingId/start', startDriverRideController)
+driverRouter.post('/rides/:bookingId/complete', completeDriverRideController)
+driverRouter.post('/rides/:bookingId/cancel', cancelDriverRideController)
+
+driverRouter.get('/earnings', getDriverEarningsController)
+
+export default driverRouter
