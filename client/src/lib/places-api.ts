@@ -48,6 +48,7 @@ export type RouteLineString = {
 export type RouteResult = {
     distance: number;
     duration: number;
+    fare: number;
     geometry: RouteLineString;
 };
 
@@ -62,9 +63,17 @@ export async function fetchRoute(
     const url =
         `/api/routes?from=${from.longitude},${from.latitude}` +
         `&to=${to.longitude},${to.latitude}`;
-    const response = await fetch(url, {
-        headers: { 'Accept': 'application/json' },
-    });
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12000);
+    let response: Response;
+    try {
+        response = await fetch(url, {
+            headers: { 'Accept': 'application/json' },
+            signal: controller.signal,
+        });
+    } finally {
+        window.clearTimeout(timeout);
+    }
 
     if (!response.ok) {
         let message = `Route request failed (${response.status})`;

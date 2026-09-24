@@ -1044,3 +1044,67 @@ The one deliberate gap, restated plainly: **live traffic data**. OSM-based routi
 ---
 
 *Last updated: 2026-09-18. This project is a work in progress - every section above reflects the code as it currently exists.*
+
+---
+
+## Latest Implementation Update — 2026-09-25
+
+This update is appended to preserve the original project history above. It documents the current production-facing behavior and deployment configuration implemented after the initial build log.
+
+### Current features
+
+- **Pre-booking fare quotes:** `GET /api/routes` returns a server-calculated fare before the passenger books. The dashboard displays that quote and the booking service uses the same rounded pricing helper.
+- **Reliable driver search:** a booking starts at 5 km and expands cumulatively to 10 km, 15 km, and 20 km. Extensions run every five seconds, with a bounded final notification retry before the system cancellation path runs.
+- **Search progress updates:** the main API sends passenger socket events describing the active radius. The passenger dashboard shows when the search is taking longer and which radius is being searched.
+- **Retry-safe notifications:** failed socket-server notifications are not permanently marked as delivered, and stale driver socket mappings are not treated as active deliveries.
+- **Driver navigation:** confirmed and arriving rides draw the driver-to-pickup route; in-progress rides draw the driver-to-destination route. GPS tracking, route retries, map camera following, and marker visibility remain active throughout a ride.
+- **Map stability:** MapLibre navigation sources are rehydrated after light/dark style changes, route requests have bounded timeouts, and theme-specific route colors keep the blue navigation line visible in both styles.
+- **Responsive driver UI:** the desktop live-ride strip no longer covers the map, and incoming ride requests render in the driver content flow rather than as a fixed desktop popup.
+- **Realtime session bridge:** the socket server resolves passenger sessions through the main API’s authenticated `/api/v1/auth/me` endpoint.
+
+### Environment-based service URLs
+
+Copy the example files and replace only the deployment-specific values:
+
+```text
+client/.env.example       -> client/.env
+server/.env.example       -> server/.env
+socket-server/.env.example -> socket-server/.env
+.env.example              -> .env (only when using the included Redis Compose setup)
+```
+
+| Variable | Consumer | Purpose | Local example |
+| --- | --- | --- | --- |
+| `VITE_BETTER_AUTH_URL` | Browser | Public Better Auth/API origin | `http://localhost:3000` |
+| `VITE_SOCKET_URL` | Browser | Public Socket.IO origin | `http://localhost:5002` |
+| `API_PROXY_TARGET` | Vite dev server | Target for relative `/api` requests | `http://localhost:3000` |
+| `SOCKET_SERVER_URL` | Main API | Private HTTP URL of the socket server | `http://localhost:5001` |
+| `MAIN_API_URL` | Socket server | Private URL of the main API | `http://localhost:3000` |
+| `TRUSTED_ORIGINS` | Main API and socket server | Comma-separated browser origins | `http://localhost:5173` |
+| `BIND_HOST` | Socket server | Network interface for HTTP and Socket.IO | `0.0.0.0` |
+| `VITE_MAP_STYLE_URL` | Browser | Light MapLibre style URL | OpenFreeMap positron |
+| `VITE_MAP_DARK_STYLE_URL` | Browser | Dark MapLibre style URL | OpenFreeMap dark |
+
+For a Docker or reverse-proxy deployment, use internal service names for server-to-server values such as `http://socket-server:5001` and `http://server:3000`. Use public HTTPS origins for `VITE_*` values. Never put passwords, session secrets, OAuth secrets, or service credentials in `VITE_*` variables because Vite exposes them to the browser.
+
+### Local startup
+
+```bash
+cd server && npm install && npm run dev
+cd socket-server && npm install && npm run dev
+cd client && npm install && npm run dev
+```
+
+The included Compose file starts Redis only. It requires `REDIS_PASSWORD` in the root `.env` and accepts `REDIS_HOST_PORT` and `REDIS_IMAGE` overrides. The committed Compose file contains no password; real `.env` files remain ignored by Git.
+
+### Verification commands
+
+```bash
+cd client && npm run build
+cd server && npx tsc --noEmit
+cd socket-server && npx tsc --noEmit
+```
+
+The client production build is the authoritative frontend type/build check. The repository-wide client lint still contains pre-existing React Compiler/hook-rule findings outside the current driver-map changes.
+
+*Last updated: 2026-09-25. The sections above are retained as historical project documentation; this section reflects the latest implemented behavior and deployment configuration.*

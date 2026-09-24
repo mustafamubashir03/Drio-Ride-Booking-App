@@ -52,8 +52,12 @@ export function useDriverSocket(
 
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectingRef = useRef(false);
   const driverIdRef = useRef(driverId);
-  driverIdRef.current = driverId;
+
+  useEffect(() => {
+    driverIdRef.current = driverId;
+  }, [driverId]);
 
   const emitDriverLogin = useCallback(() => {
     const socket = socketRef.current;
@@ -65,12 +69,12 @@ export function useDriverSocket(
   }, []);
 
   const connect = useCallback(() => {
-    if (socketRef.current?.connected) return;
-    if (state.connecting) return;
+    if (socketRef.current || connectingRef.current) return;
+    connectingRef.current = true;
 
     setState((prev) => ({ ...prev, connecting: true, error: null }));
 
-    const currentSocketUrl = import.meta.env.VITE_SOCKET_URL || "http://localhost:3002";
+    const currentSocketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
     const socket = io(currentSocketUrl, {
       transports: ["websocket", "polling"],
       withCredentials: true,
@@ -83,6 +87,7 @@ export function useDriverSocket(
     socketRef.current = socket;
 
     socket.on("connect", () => {
+      connectingRef.current = false;
       console.log("[DriverSocket] Connected socketId:", socketRef.current?.id);
       setState((prev) => ({
         ...prev,
@@ -96,6 +101,7 @@ export function useDriverSocket(
     });
 
     socket.on("disconnect", (reason) => {
+      connectingRef.current = false;
       console.log("[DriverSocket] Disconnected, reason:", reason);
       setState((prev) => ({
         ...prev,
@@ -105,6 +111,7 @@ export function useDriverSocket(
     });
 
     socket.on("connect_error", (err) => {
+      connectingRef.current = false;
       console.error("[DriverSocket] Connection error:", err.message);
       setState((prev) => ({
         ...prev,
@@ -137,9 +144,10 @@ export function useDriverSocket(
       onRideStatusUpdate?.(data);
     });
 
-  }, [state.connecting, onNewRideNotification, onRemoveRideNotification, onRideStatusUpdate, emitDriverLogin]);
+  }, [onNewRideNotification, onRemoveRideNotification, onRideStatusUpdate, emitDriverLogin]);
 
   const disconnect = useCallback(() => {
+    connectingRef.current = false;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;

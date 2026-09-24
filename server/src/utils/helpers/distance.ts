@@ -16,3 +16,10 @@ export function calculateHaversineDistance(sourceLat: number, sourceLon: number,
 
     return EARTH_RADIUS_KM * c;
 }
+
+export function calculateFare(sourceLat: number, sourceLon: number, destLat: number, destLon: number) {
+    const BASIC_FARE = 50;
+    const PER_KM = 10;
+    const distance = Math.round(calculateHaversineDistance(sourceLat, sourceLon, destLat, destLon) * 100) / 100;
+    return Math.round((BASIC_FARE + PER_KM * distance) * 100) / 100;
+}

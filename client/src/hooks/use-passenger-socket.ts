@@ -8,10 +8,19 @@ type PassengerSocketState = {
   socket: Socket | null;
 };
 
+export type PassengerSearchProgress = {
+  stage: number;
+  radiusKm: number;
+};
+
+export type PassengerCancellationBy = "passenger" | "driver" | "system";
+
 export interface RideStatusUpdateData {
   rideId: string;
-  status: string;
+  status: string | null;
   driverId?: string | null;
+  searchProgress?: PassengerSearchProgress | null;
+  cancelledBy?: PassengerCancellationBy | null;
   timeStamps?: string;
 }
 
@@ -70,7 +79,7 @@ export function usePassengerSocket({
 
     setState((prev) => ({ ...prev, connecting: true, error: null }));
 
-    const currentSocketUrl = import.meta.env.VITE_SOCKET_URL || "http://localhost:5002";
+    const currentSocketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
     const socket = io(currentSocketUrl, {
       transports: ["websocket", "polling"],
       withCredentials: true,

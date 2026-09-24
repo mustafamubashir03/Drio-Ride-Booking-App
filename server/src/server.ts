@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { serverConfig } from './config';
+import { authConfig } from './config/auth.config';
 import v1Router from './routers/v1/index.router';
 import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
@@ -23,10 +24,18 @@ const app = express();
 
 
 const localhostOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+const isAllowedOrigin = (origin: string | undefined) => {
+    if (!origin || localhostOrigin.test(origin)) return true;
+    return authConfig.trustedOrigins.some((trustedOrigin) => {
+        if (!trustedOrigin.includes("*")) return trustedOrigin === origin;
+        const [prefix, suffix] = trustedOrigin.split("*", 2);
+        return origin.startsWith(prefix) && origin.endsWith(suffix);
+    });
+};
 
 app.use(cors({
     origin(origin, callback) {
-        if (!origin || localhostOrigin.test(origin)) {
+        if (isAllowedOrigin(origin)) {
             callback(null, true);
             return;
         }

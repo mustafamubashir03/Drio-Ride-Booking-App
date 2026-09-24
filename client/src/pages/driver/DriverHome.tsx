@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import Map from "@/components/Map";
@@ -86,7 +86,7 @@ export default function DriverHome() {
   const { data: session } = authClient.useSession();
   const driverId = (session as unknown as { user?: { id?: string } })?.user?.id;
   const { page, stagger, reduced } = useMotionSystem();
-  const { connect, disconnect, emitLocation, rideRefreshKey } = useOutletContext<DriverDashboardContext>();
+  const { connected, connect, disconnect, emitLocation, rideRefreshKey } = useOutletContext<DriverDashboardContext>();
   const [availability, setAvailability] = useState<DriverAvailability | null>(null);
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
@@ -117,11 +117,18 @@ export default function DriverHome() {
     },
     throttleMs: 3000,
   });
+  const startLocation = location.start;
   const availabilityLoadSeq = useRef(0);
   const activeRideLoadSeq = useRef(0);
 
-  const from: SelectedLocation | null = activeRide ? toLocation(activeRide.source) : null;
-  const to: SelectedLocation | null = activeRide ? toLocation(activeRide.destination) : null;
+  const from: SelectedLocation | null = useMemo(
+    () => (activeRide ? toLocation(activeRide.source) : null),
+    [activeRide],
+  );
+  const to: SelectedLocation | null = useMemo(
+    () => (activeRide ? toLocation(activeRide.destination) : null),
+    [activeRide],
+  );
 
   // Static route for FROM→TO display when NOT in active navigation (confirmed, arrived, etc.)
   const { route: staticRoute, status: routeStatus, error: routeError } = useRoute(from, to);
@@ -176,6 +183,15 @@ export default function DriverHome() {
   // Stable phase ID for Map camera fitting (only fit once per phase)
   const navPhaseId = navPhase ? `${navPhase}-${activeRide?._id}` : null;
 
+  const activeRideNeedsLocation =
+    activeRide !== null && activeRide.status !== "completed" && activeRide.status !== "cancelled";
+
+  useEffect(() => {
+    if (!activeRideNeedsLocation) return;
+    startLocation();
+    if (!connected) connect();
+  }, [activeRideNeedsLocation, connected, connect, startLocation]);
+
   const loadAvailability = async () => {
     const seq = ++availabilityLoadSeq.current;
     setAvailabilityLoading(true);
@@ -223,9 +239,8 @@ export default function DriverHome() {
     void loadAvailability();
     void loadActiveRide();
     void loadSummary();
-    // GPS acquisition is tied to the online lifecycle: loadAvailability starts
-    // the watcher when the persisted status is online, and the online/offline
-    // toggle starts/stops it. While offline there is no active GPS watcher.
+    // GPS acquisition starts for online dispatch and remains active whenever
+    // an accepted ride needs navigation, even if availability changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -263,7 +278,7 @@ export default function DriverHome() {
         // Emit driver login to socket server with driver ID from auth
         // The driverId is available from the auth context
         // We'll get it from the authUser in the driver-api context
-      } else {
+      } else if (!activeRide) {
         location.stop();
         disconnect();
       }
@@ -278,6 +293,7 @@ export default function DriverHome() {
     if (!activeRide) return;
     const action = actionForStatus(activeRide.status);
     if (!action) return;
+    activeRideLoadSeq.current += 1;
     setActionBusy(true);
     setActionError(null);
     try {
@@ -294,6 +310,7 @@ export default function DriverHome() {
       }
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Could not update the ride.");
+      void loadActiveRide(true);
     } finally {
       setActionBusy(false);
     }
@@ -323,6 +340,7 @@ export default function DriverHome() {
           navRoute={navRoute}
           navPhaseId={navPhaseId}
           driverLocation={driverMarker}
+          followDriver={Boolean(navPhaseId)}
         />
       </div>
 
@@ -552,6 +570,15 @@ export default function DriverHome() {
                       </div>
                     </div>
 
+                    {displayRouteStatus === "loading" && (
+                      <p className="mt-3 text-[11px] text-muted-foreground">Calculating route…</p>
+                    )}
+                    {displayRouteStatus === "error" && (
+                      <p className="mt-3 text-[11px] text-destructive">
+                        {displayRouteError ?? "Could not calculate a route."}
+                      </p>
+                    )}
+
                     <p className="mt-3 text-[11px] text-muted-foreground">
                       Booking ID{" "}
                       <span className="font-mono text-foreground/80">{activeRide._id}</span>
@@ -649,66 +676,6 @@ export default function DriverHome() {
         </div>{/* scroll wrapper */}
       </div>{/* panel */}
 
-      {/* Desktop: live-ride strip overlaying the map's lower edge */}
-      {activeRide ? (
-        <div className="absolute inset-x-[380px] bottom-0 z-10 hidden lg:block">
-          <div className="border-t border-border bg-card px-6 py-4">
-            <div className="grid grid-cols-4 gap-4">
-              {[
-                {
-                  icon: MapPin,
-                  label: "Pickup",
-                  value: formatPlace(activeRide.source),
-                  accent: "text-primary",
-                },
-                {
-                  icon: Navigation,
-                  label: "Destination",
-                  value: formatPlace(activeRide.destination),
-                  accent: "text-drio-blue",
-                },
-                {
-                  icon: Warehouse,
-                  label: "Distance",
-                  value: displayRoute
-                    ? formatDistance(displayRoute.distance)
-                    : activeRide.distance
-                    ? formatDistance(activeRide.distance)
-                    : "—",
-                  accent: "text-drio-violet",
-                },
-                {
-                  icon: Radio,
-                  label: etaLabel,
-                  value: displayRoute ? formatDuration(displayRoute.duration) : "—",
-                  accent: "text-drio-success",
-                },
-              ].map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div key={item.label} className="flex items-center gap-3 min-w-0">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/5 border border-border">
-                      <Icon className={`h-4 w-4 ${item.accent}`} />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{item.label}</p>
-                      <p className="truncate text-[13px] font-semibold text-foreground">{item.value}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {displayRouteStatus === "loading" && (
-              <p className="mt-3 text-[11px] text-muted-foreground">Calculating route…</p>
-            )}
-            {displayRouteStatus === "error" && (
-              <p className="mt-3 text-[11px] text-destructive">
-                {displayRouteError ?? "Could not calculate a route."}
-              </p>
-            )}
-          </div>
-        </div>
-      ) : null}
     </MotionPage>
   );
 }

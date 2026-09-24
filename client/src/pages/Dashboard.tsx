@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRoute } from "@/hooks/use-route";
 import { useNavigationRoute, type NavigationPhase } from "@/hooks/use-navigation-route";
-import { usePassengerSocket, type DriverLocationData, type RideStatusUpdateData } from "@/hooks/use-passenger-socket";
+import { usePassengerSocket, type DriverLocationData, type PassengerSearchProgress, type RideStatusUpdateData } from "@/hooks/use-passenger-socket";
 import { fetchBookings, cancelBooking, submitBookingReview, type BookingCancelledBy, type BookingDriverInfo, type BookingDriverLocation, type BookingRecord, type BookingStatus } from "@/lib/bookings-api";
 import { formatFare } from "@/lib/format";
 import type { PlaceResult, SelectedLocation, RouteResult } from "@/lib/places-api";
@@ -64,9 +64,9 @@ const navAccentStyles: Record<
 };
 
 const vehicleTypes = [
-  { id: "premium", label: "Ride", icon: Car, eta: "4 min", price: "PKR 8–12", accent: "primary" },
-  { id: "suv", label: "Ride XL", icon: Car, eta: "6 min", price: "PKR 14–18", accent: "blue" },
-  { id: "lux", label: "Lux", icon: Car, eta: "9 min", price: "PKR 22–30", accent: "violet" },
+  { id: "premium", label: "Ride", icon: Car, eta: "4 min", accent: "primary" },
+  { id: "suv", label: "Ride XL", icon: Car, eta: "6 min", accent: "blue" },
+  { id: "lux", label: "Lux", icon: Car, eta: "9 min", accent: "violet" },
 ] as const;
 
 const vehicleAccentStyles: Record<
@@ -219,6 +219,7 @@ export default function Dashboard() {
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [bookingFare, setBookingFare] = useState<number | null>(null);
   const [bookingStatus, setBookingStatus] = useState<BookingStatus | null>(null);
+  const [searchProgress, setSearchProgress] = useState<PassengerSearchProgress | null>(null);
   const [bookingDriverId, setBookingDriverId] = useState<string | null>(null);
   const [bookingDriverInfo, setBookingDriverInfo] =
     useState<BookingDriverInfo>(null);
@@ -295,12 +296,17 @@ export default function Dashboard() {
     passengerId: user?.id,
     onRideStatusUpdate: (data: RideStatusUpdateData) => {
       if (!bookingId || data.rideId !== bookingId) return;
-      const next = data.status as BookingStatus;
+      const next = data.status ? (data.status as BookingStatus) : null;
       if (next) setBookingStatus(next);
       if (data.driverId) setBookingDriverId(data.driverId);
+      if (data.searchProgress) setSearchProgress(data.searchProgress);
+      if (data.cancelledBy) setBookingCancelledBy(data.cancelledBy);
       if (next === "cancelled") {
+        setSearchProgress(null);
         setBookingCancelledAt(new Date().toISOString());
-        setBookingCancelledBy("driver");
+        setBookingCancelledBy(data.cancelledBy ?? "system");
+      } else if (next && next !== "pending") {
+        setSearchProgress(null);
       }
     },
     onDriverLocation: (data: DriverLocationData) => {
@@ -458,6 +464,11 @@ export default function Dashboard() {
       setBookingState("error");
       return;
     }
+    if (routeStatus !== "success" || !route || !Number.isFinite(route.fare)) {
+      setBookingError("Calculating your fare before booking.");
+      setBookingState("error");
+      return;
+    }
     setBookingState("loading");
     setBookingError(null);
     try {
@@ -496,6 +507,7 @@ export default function Dashboard() {
       setDriverLocation(null);
       setBookingCancelledAt(null);
       setBookingCancelledBy(null);
+      setSearchProgress(null);
       setBookingFeedback({ rating: null, comment: null, reviewedAt: null });
       setCancelOpen(false);
       setCancelBusy(false);
@@ -525,6 +537,7 @@ export default function Dashboard() {
       setBookingFare(result.fare ?? bookingFare);
       setBookingCancelledAt(result.cancelledAt);
       setBookingCancelledBy(result.cancelledBy);
+      setSearchProgress(null);
       setBookingDriverId(result.driver);
       setBookingDriverInfo(result.driverInfo);
       setCancelOpen(false);
@@ -567,6 +580,7 @@ export default function Dashboard() {
     setBookingId(null);
     setBookingFare(null);
     setBookingStatus(null);
+    setSearchProgress(null);
     setBookingDriverId(null);
     setBookingDriverInfo(null);
     setDriverLocation(null);
@@ -650,6 +664,7 @@ export default function Dashboard() {
         setBookingFeedback(
           current.feedback ?? { rating: null, comment: null, reviewedAt: null },
         );
+        if (current.status !== "pending") setSearchProgress(null);
         // Recover the driver's most recent position (Redis, 30s TTL) so the
         // live marker survives a reload until the socket stream resumes.
         if (current.driverLocation && current.driverLocation.latitude != null && current.driverLocation.longitude != null) {
@@ -660,11 +675,7 @@ export default function Dashboard() {
             speed: current.driverLocation.speed ?? null,
           });
         }
-        if (
-          current.status === "confirmed" ||
-          current.status === "cancelled" ||
-          current.status === "completed"
-        ) {
+        if (current.status === "cancelled" || current.status === "completed") {
           stopPolling();
         }
       } catch {
@@ -705,6 +716,7 @@ export default function Dashboard() {
         if (!inFlight) return;
         setBookingId(inFlight._id);
         setBookingStatus(inFlight.status);
+        setSearchProgress(null);
         setBookingFare(inFlight.fare ?? null);
         setBookingDriverId(inFlight.driver);
         setBookingDriverInfo(inFlight.driverInfo ?? null);
@@ -748,7 +760,15 @@ export default function Dashboard() {
   }, [user?.id, rideBooked]);
 
   const selectedVehicle = vehicleTypes.find((v) => v.id === vehicle)!;
-  const rideFareLabel = bookingFare === null ? selectedVehicle.price : formatFare(bookingFare);
+  const estimatedFareLabel =
+    route?.fare != null
+      ? formatFare(route.fare)
+      : routeStatus === "loading"
+        ? "Calculating…"
+        : "—";
+  const fareReady = routeStatus === "success" && route !== null && Number.isFinite(route.fare);
+  const rideFareLabel =
+    bookingFare === null ? estimatedFareLabel : formatFare(bookingFare);
 
   const historyGroups = history.reduce<
     Array<{ dateLabel: string; items: BookingRecord[] }>
@@ -907,7 +927,7 @@ export default function Dashboard() {
               Estimated fare
             </p>
             <p className="text-[18px] font-sans font-bold text-foreground mt-0.5">
-              {selectedVehicle.price}
+              {estimatedFareLabel}
             </p>
           </div>
           <div className="text-right">
@@ -924,7 +944,7 @@ export default function Dashboard() {
           size="lg"
           className="w-full rounded-2xl text-[14px] font-semibold tracking-wide hover:scale-[1.01]"
           onClick={handleBookRide}
-          disabled={bookingState === "loading" || rideBooked}
+          disabled={bookingState === "loading" || rideBooked || !fareReady}
         >
           {bookingState === "loading"
             ? "Booking ride…"
@@ -975,21 +995,26 @@ export default function Dashboard() {
                   Searching for a ride
                 </p>
                 <p className="text-[12.5px] text-muted-foreground">
-                  Scanning the area for nearby drivers…
+                  {searchProgress
+                    ? `Taking longer than usual — no drivers found nearby. We're expanding the search radius to ${searchProgress.radiusKm} km.`
+                    : "Scanning the area for nearby drivers…"}
                 </p>
               </div>
               <Badge
                 variant="outline"
                 className="ml-auto shrink-0 border-amber-500/25 bg-amber-500/10 text-amber-500"
               >
-                Searching
+                {searchProgress
+                  ? `Expanding · ${searchProgress.radiusKm} km`
+                  : "Searching"}
               </Badge>
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
               <p className="text-[11.5px] text-muted-foreground">
-                We&apos;re widening the search nearby — a driver will be
-                assigned automatically when one is found.
+                {searchProgress
+                  ? `Search radius expanded to ${searchProgress.radiusKm} km. We'll keep looking for a nearby driver.`
+                  : "We'll keep searching nearby and expand the radius if needed."}
               </p>
               <button
                 type="button"

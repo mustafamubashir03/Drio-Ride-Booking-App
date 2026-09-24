@@ -142,7 +142,7 @@ export const cancelPassengerRideService = async ({
         await notifyDriver({ driverId: assignedDriverId, bookingId, status: "cancelled" });
     }
 
-    await notifyPassenger({ bookingId, passengerId, status: "cancelled", driverId: assignedDriverId });
+    await notifyPassenger({ bookingId, passengerId, status: "cancelled", driverId: assignedDriverId, cancelledBy: "passenger" });
     logger.info(`[PASSENGER-CANCEL] bookingId=${bookingId} from=${fromStatus} reason=${reason ?? "other"} driver=${assignedDriverId}`);
 
     return serializePassengerRide(updated);

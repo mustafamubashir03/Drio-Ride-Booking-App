@@ -6,7 +6,7 @@ import logger from "../config/logger.config";
  * database; it only fans these events out to online clients via their sockets.
  */
 
-const SOCKET_SERVER_URL = process.env.SOCKET_SERVER_URL || "http://localhost:3001";
+const SOCKET_SERVER_URL = process.env.SOCKET_SERVER_URL || "http://localhost:5001";
 
 export type RideInfo = {
     pickup: string;
@@ -16,8 +16,15 @@ export type RideInfo = {
     passengerName?: string;
 };
 
-export const notifyDrivers = async (rideId: string, driverIds: string[], rideInfo: RideInfo) => {
-    if (driverIds.length === 0) return;
+export type SearchProgress = {
+    stage: number;
+    radiusKm: number;
+};
+
+export type RideCancellationBy = "passenger" | "driver" | "system";
+
+export const notifyDrivers = async (rideId: string, driverIds: string[], rideInfo: RideInfo): Promise<string[]> => {
+    if (driverIds.length === 0) return [];
     try {
         logger.info(`[BOOKING] notifyDrivers: rideId=${rideId}, driverIds=${JSON.stringify(driverIds)}, rideInfo=${JSON.stringify(rideInfo)}`);
         const res = await fetch(`${SOCKET_SERVER_URL}/api/v1/notification/notify-drivers`, {
@@ -27,11 +34,27 @@ export const notifyDrivers = async (rideId: string, driverIds: string[], rideInf
         });
         if (!res.ok) {
             logger.error("[BOOKING] Failed to notify drivers", await res.text());
+            return [];
+        }
+
+        let notifiedDriverIds: string[];
+        try {
+            const data = (await res.json()) as { notifiedDriverIds?: unknown };
+            if (!Array.isArray(data.notifiedDriverIds)) return [];
+            notifiedDriverIds = data.notifiedDriverIds.filter((id): id is string => typeof id === "string");
+        } catch {
+            return [];
+        }
+
+        if (notifiedDriverIds.length < driverIds.length) {
+            logger.warn(`[BOOKING] Notified ${notifiedDriverIds.length}/${driverIds.length} drivers for ride ${rideId}`);
         } else {
             logger.info(`[BOOKING] Notified ${driverIds.length} drivers for ride ${rideId}`);
         }
+        return notifiedDriverIds;
     } catch (err) {
         logger.error("[BOOKING] Error calling socket server notify-drivers", err);
+        return [];
     }
 };
 
@@ -58,17 +81,29 @@ export const notifyPassenger = async ({
     passengerId,
     status,
     driverId,
+    searchProgress,
+    cancelledBy,
 }: {
     bookingId: string;
     passengerId: string;
-    status: string;
+    status: string | null;
     driverId?: string | null;
+    searchProgress?: SearchProgress | null;
+    cancelledBy?: RideCancellationBy | null;
 }) => {
     try {
+        const payload = {
+            bookingId,
+            passengerId,
+            status,
+            driverId: driverId ?? null,
+            searchProgress: searchProgress ?? null,
+            cancelledBy: cancelledBy ?? null,
+        };
         const res = await fetch(`${SOCKET_SERVER_URL}/api/v1/notification/notify-passenger`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ bookingId, passengerId, status, driverId: driverId ?? null }),
+            body: JSON.stringify(payload),
         });
         if (!res.ok) {
             logger.error("[RIDE] Failed to notify passenger", await res.text());

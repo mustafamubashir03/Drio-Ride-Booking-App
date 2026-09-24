@@ -1,5 +1,6 @@
 import logger from "../config/logger.config";
 import { BadRequestError, InternalServerError } from "../utils/errors/app.error";
+import { calculateFare } from "../utils/helpers/distance";
 
 export interface RouteCoordinates {
     longitude: number;
@@ -14,6 +15,7 @@ export interface RouteGeometry {
 export interface RouteResult {
     distance: number;
     duration: number;
+    fare: number;
     geometry: RouteGeometry;
 }
 
@@ -41,7 +43,9 @@ const buildOsrmUrl = (from: RouteCoordinates, to: RouteCoordinates): string =>
     `${from.longitude},${from.latitude};${to.longitude},${to.latitude}` +
     `?alternatives=false&overview=full&geometries=geojson&steps=false`;
 
-const normalizeOsrmResponse = (data: unknown, url: string): RouteResult => {
+type RouteDetails = Omit<RouteResult, "fare">;
+
+const normalizeOsrmResponse = (data: unknown, url: string): RouteDetails => {
     const payload = data as OsrmResponse | null;
 
     if (!payload || payload.code !== "Ok" || !Array.isArray(payload.routes) || payload.routes.length === 0) {
@@ -108,5 +112,9 @@ export const getRoute = async (from: RouteCoordinates, to: RouteCoordinates): Pr
         throw new InternalServerError("Route service returned an unexpected response");
     }
 
-    return normalizeOsrmResponse(data, url);
+    const route = normalizeOsrmResponse(data, url);
+    return {
+        ...route,
+        fare: calculateFare(from.latitude, from.longitude, to.latitude, to.longitude),
+    };
 };

@@ -1,0 +1,13 @@
+services:
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    container_name: drio-redis
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6380}:6379"
+    volumes:
+      - drio-redis-data:/data
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
+    restart: unless-stopped
+
+volumes:
+  drio-redis-data:

@@ -183,6 +183,7 @@ const transitionDriverRideService = async ({
             passengerId: passenger._id,
             status: toStatus,
             driverId,
+            cancelledBy: toStatus === "cancelled" ? "driver" : null,
         });
     }
 

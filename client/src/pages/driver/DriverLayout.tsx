@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
@@ -102,6 +102,7 @@ export default function DriverLayout() {
   const location = useLocation();
 
   const [incomingRide, setIncomingRide] = useState<IncomingRideRequestData | null>(null);
+  const handledRideIdsRef = useRef<Set<string>>(new Set());
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
   const [rideRefreshKey, setRideRefreshKey] = useState(0);
 
@@ -111,6 +112,7 @@ export default function DriverLayout() {
       rideInfo: { pickup: string; destination: string; fare: number; distance?: number; passengerName?: string };
       timeStamps: string;
     }) => {
+      if (handledRideIdsRef.current.has(data.rideId)) return;
       const expiresAt = Date.now() + 15000; // 15 seconds from now
       setIncomingRide({
         rideId: data.rideId,
@@ -125,7 +127,15 @@ export default function DriverLayout() {
     []
   );
 
+  const handleDismissIncomingRide = useCallback(() => {
+    setIncomingRide((cur) => {
+      if (cur) handledRideIdsRef.current.add(cur.rideId);
+      return null;
+    });
+  }, []);
+
   const handleRemoveRideNotification = useCallback((rideId: string) => {
+    handledRideIdsRef.current.add(rideId);
     setIncomingRide((cur) => (cur && cur.rideId === rideId ? null : cur));
   }, []);
 
@@ -135,6 +145,7 @@ export default function DriverLayout() {
       // state (cancelled/completed), so a stale live-trip screen doesn't linger
       // after the passenger cancels or the sweep expires the no-driver search.
       if (data.status === "cancelled" || data.status === "completed") {
+        handledRideIdsRef.current.add(data.rideId);
         setRideRefreshKey((k) => k + 1);
         setIncomingRide((cur) => (cur && cur.rideId === data.rideId ? null : cur));
       }
@@ -153,10 +164,15 @@ export default function DriverLayout() {
     setAcceptingRideId(rideId);
     try {
       await confirmBooking(rideId);
+      handledRideIdsRef.current.add(rideId);
       setIncomingRide((cur) => (cur && cur.rideId === rideId ? null : cur));
       setRideRefreshKey((k) => k + 1);
     } catch (e) {
       // 409 = "Ride is no longer available" — the card is stale either way.
+      if ((e as { status?: number }).status === 409) {
+        handledRideIdsRef.current.add(rideId);
+      }
+      setRideRefreshKey((k) => k + 1);
       setIncomingRide((cur) => (cur && cur.rideId === rideId ? null : cur));
       const err = e as { status?: number };
       if (err.status !== 409) {
@@ -327,6 +343,23 @@ export default function DriverLayout() {
         </header>
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(60px+env(safe-area-inset-bottom))] lg:pb-0">
+          {incomingRide ? (
+            <div className="shrink-0 p-3 lg:p-4">
+              <IncomingRideRequest
+                rideId={incomingRide.rideId}
+                pickup={incomingRide.pickup}
+                destination={incomingRide.destination}
+                fare={incomingRide.fare}
+                distance={incomingRide.distance}
+                passengerName={incomingRide.passengerName}
+                expiresAt={incomingRide.expiresAt}
+                onDismiss={handleDismissIncomingRide}
+                onAccept={handleAcceptRide}
+                accepting={acceptingRideId === incomingRide.rideId}
+                inline
+              />
+            </div>
+          ) : null}
           <Outlet
             context={
               { connected, connect, disconnect, emitLocation, rideRefreshKey } satisfies DriverDashboardContext
@@ -393,20 +426,6 @@ export default function DriverLayout() {
         </nav>
       </div>
 
-      {incomingRide && (
-        <IncomingRideRequest
-          rideId={incomingRide.rideId}
-          pickup={incomingRide.pickup}
-          destination={incomingRide.destination}
-          fare={incomingRide.fare}
-          distance={incomingRide.distance}
-          passengerName={incomingRide.passengerName}
-          expiresAt={incomingRide.expiresAt}
-          onDismiss={() => setIncomingRide(null)}
-          onAccept={handleAcceptRide}
-          accepting={acceptingRideId === incomingRide.rideId}
-        />
-      )}
     </div>
   );
 }

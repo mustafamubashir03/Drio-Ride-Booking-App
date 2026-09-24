@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Check, Loader2, MapPin, Navigation, Timer, UserRound, X } from "lucide-react";
 import { useMotionSystem } from "@/motion/use-motion";
 import { formatFare } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 interface IncomingRideRequestProps {
   rideId: string;
@@ -18,6 +19,7 @@ interface IncomingRideRequestProps {
   onDismiss: () => void;
   onAccept?: (rideId: string) => void;
   accepting?: boolean;
+  inline?: boolean;
 }
 
 export function IncomingRideRequest({
@@ -31,6 +33,7 @@ export function IncomingRideRequest({
   onDismiss,
   onAccept,
   accepting,
+  inline = false,
 }: IncomingRideRequestProps) {
   const { reduced } = useMotionSystem();
   const [totalSeconds] = useState(() => {
@@ -65,7 +68,12 @@ export function IncomingRideRequest({
         initial="hidden"
         animate="visible"
         exit="exit"
-        className="pointer-events-none fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 lg:inset-x-auto lg:bottom-6 lg:right-6 lg:w-[380px]"
+        className={cn(
+           "pointer-events-none z-50",
+           inline
+             ? "relative w-full"
+             : "fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] lg:inset-x-auto lg:bottom-6 lg:right-6 lg:w-[380px]",
+         )}
       >
         <Card className="pointer-events-auto max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain shadow-2xl border-destructive/30 bg-card lg:max-h-none lg:overflow-hidden">
           <CardContent className="p-4">

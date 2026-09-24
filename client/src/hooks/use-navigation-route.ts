@@ -50,29 +50,52 @@ export function useNavigationRoute({ phase, origin, target }: UseNavigationRoute
   const pending = useRef(false);
   const lastRequest = useRef<{ lat: number; lng: number; ts: number } | null>(null);
   const latestOrigin = useRef<{ lat: number; lng: number } | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRouteRef = useRef<((from: { lat: number; lng: number }) => void) | null>(null);
   const targetRef = useRef(target);
-  targetRef.current = target;
 
   const phaseKey = phase;
   const targetKey = target ? `${target.latitude},${target.longitude}` : null;
+  const originLatitude = origin?.latitude ?? null;
+  const originLongitude = origin?.longitude ?? null;
+
+  useEffect(() => {
+    targetRef.current = target;
+  }, [target]);
 
   // New leg (phase or target changed, or phase disabled): reset guards, drop
   // any in-flight result, and clear the previous leg's polyline immediately so
   // a stale DRIVER→FROM route never lingers while a DRIVER→TO reroute resolves.
   useEffect(() => {
+    let cancelled = false;
     seq.current += 1;
+    const resetSeq = seq.current;
     inFlight.current = false;
     pending.current = false;
     lastRequest.current = null;
     latestOrigin.current = null;
-    setRoute(null);
-    setStatus("idle");
-    setError(null);
+    if (retryTimerRef.current !== null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    queueMicrotask(() => {
+      if (cancelled || seq.current !== resetSeq) return;
+      setRoute(null);
+      setStatus("idle");
+      setError(null);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [phaseKey, targetKey]);
 
   const requestRoute = useCallback(async (from: { lat: number; lng: number }) => {
     const targetNow = targetRef.current;
     if (!phaseKey || !targetNow) return;
+    if (retryTimerRef.current !== null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
     inFlight.current = true;
     const mySeq = ++seq.current;
     const ts = Date.now();
@@ -89,38 +112,50 @@ export function useNavigationRoute({ phase, origin, target }: UseNavigationRoute
       setError(null);
     } catch (e) {
       if (mySeq !== seq.current) return;
-      setRoute(null);
       setStatus("error");
       setError(e instanceof Error ? e.message : "Could not calculate a route right now.");
+      if (retryTimerRef.current !== null) {
+        clearTimeout(retryTimerRef.current);
+      }
+      const fresh = latestOrigin.current;
+      if (fresh) {
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          if (mySeq !== seq.current) return;
+          const retryOrigin = latestOrigin.current;
+          if (retryOrigin) void requestRouteRef.current?.(retryOrigin);
+        }, 3000);
+      }
     } finally {
-      if (mySeq !== seq.current) return;
-      inFlight.current = false;
-      if (pending.current) {
-        pending.current = false;
-        const fresh = latestOrigin.current;
-        if (
-          fresh &&
-          haversineMeters(
-            lastRequest.current!.lat,
-            lastRequest.current!.lng,
-            fresh.lat,
-            fresh.lng
-          ) >= NAV_REROUTE_MIN_MOVE_M
-        ) {
-          void requestRoute(fresh);
+      if (mySeq === seq.current) {
+        inFlight.current = false;
+        if (pending.current) {
+          pending.current = false;
+          const fresh = latestOrigin.current;
+          if (
+            fresh &&
+            haversineMeters(
+              lastRequest.current!.lat,
+              lastRequest.current!.lng,
+              fresh.lat,
+              fresh.lng
+            ) >= NAV_REROUTE_MIN_MOVE_M
+          ) {
+            void requestRouteRef.current?.(fresh);
+          }
         }
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phaseKey]);
 
-  const requestRouteRef = useRef(requestRoute);
-  requestRouteRef.current = requestRoute;
+  useEffect(() => {
+    requestRouteRef.current = requestRoute;
+  }, [requestRoute]);
 
   // Watches every live fix; the gates decide whether a request is worth making.
   useEffect(() => {
-    if (!phaseKey || !targetKey || !origin) return;
-    const coord = { lat: origin.latitude, lng: origin.longitude };
+    if (!phaseKey || !targetKey || originLatitude === null || originLongitude === null) return;
+    const coord = { lat: originLatitude, lng: originLongitude };
     latestOrigin.current = coord;
 
     if (inFlight.current) {
@@ -132,21 +167,25 @@ export function useNavigationRoute({ phase, origin, target }: UseNavigationRoute
     const last = lastRequest.current;
     if (!last) {
       // First fix of the leg: route immediately, no interval wait.
-      void requestRouteRef.current(coord);
+      void requestRouteRef.current?.(coord);
       return;
     }
     const moved = haversineMeters(last.lat, last.lng, coord.lat, coord.lng);
     const elapsedMs = Date.now() - last.ts;
     if (moved >= NAV_REROUTE_MIN_MOVE_M && elapsedMs >= NAV_REROUTE_MIN_INTERVAL_MS) {
-      void requestRouteRef.current(coord);
+      void requestRouteRef.current?.(coord);
     }
     // otherwise: throttled — the last route is still a good fit.
-  }, [phaseKey, targetKey, origin?.latitude, origin?.longitude]);
+  }, [phaseKey, targetKey, originLatitude, originLongitude]);
 
   // Invalidate any in-flight response if the component unmounts.
   useEffect(() => {
     return () => {
       seq.current += 1;
+      if (retryTimerRef.current !== null) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
     };
   }, []);
 

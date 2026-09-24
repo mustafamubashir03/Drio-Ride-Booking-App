@@ -1,5 +1,5 @@
 import logger from "../config/logger.config";
-import { SEARCH_RADII_KM, SEARCH_STAGE_INTERVAL_MS, SEARCH_MAX_DURATION_MS } from "../config/search.config";
+import { SEARCH_RADII_KM, SEARCH_STAGE_INTERVAL_MS, SEARCH_MAX_DURATION_MS, SEARCH_FINAL_RETRY_GRACE_MS } from "../config/search.config";
 import {
     findPendingSearchingBookingsRepository,
     cancelBookingRepository,
@@ -23,10 +23,10 @@ import { notifyDrivers, notifyPassenger, removeRideNotification, type RideInfo }
  *
  * Controlled expansion schedule (owned by this service, never by the client):
  *   - Stage 0: 5 km  — notified immediately at booking creation
- *   - Stage 1: 8 km  — after  SEARCH_STAGE_INTERVAL_MS
- *   - Stage 2: 12 km — after  2×SEARCH_STAGE_INTERVAL_MS
- *   - Stage 3: 15 km — after  3×SEARCH_STAGE_INTERVAL_MS
- *   - Timeout:  4×   — booking expires as cancelled / no_driver_found
+ *   - Stage 1: 10 km — after  SEARCH_STAGE_INTERVAL_MS
+ *   - Stage 2: 15 km — after  2×SEARCH_STAGE_INTERVAL_MS
+ *   - Stage 3: 20 km — after  3×SEARCH_STAGE_INTERVAL_MS
+ *   - Timeout:  4× + final retry grace — booking expires as cancelled / no_driver_found
  *
  * Eligibility per candidate (nearest-first via GEORADIUS … ASC):
  *   - location metadata still fresh (`driver-location:<id>` key alive),
@@ -108,14 +108,18 @@ export const kickoffDriverSearch = async ({
     rideInfo: RideInfo;
 }) => {
     const radiusKm = SEARCH_RADII_KM[0];
-    const driverIds = await collectEligibleDriverIds({ bookingId, longitude, latitude, radiusKm });
-    if (driverIds.length > 0) {
-        await storeNotifiedDriversService(bookingId, driverIds);
-        await notifyDrivers(bookingId, driverIds, rideInfo);
-    }
     await setSearchStageService(bookingId, 0);
-    logger.info(`[SEARCH] kickoff bookingId=${bookingId} radius=${radiusKm}km notified=${driverIds.length}`);
-    return driverIds.length;
+    const driverIds = await collectEligibleDriverIds({ bookingId, longitude, latitude, radiusKm });
+    let notifiedCount = 0;
+    if (driverIds.length > 0) {
+        const notifiedDriverIds = await notifyDrivers(bookingId, driverIds, rideInfo);
+        notifiedCount = notifiedDriverIds.length;
+        if (notifiedDriverIds.length > 0) {
+            await storeNotifiedDriversService(bookingId, notifiedDriverIds);
+        }
+    }
+    logger.info(`[SEARCH] kickoff bookingId=${bookingId} radius=${radiusKm}km notified=${notifiedCount}`);
+    return notifiedCount;
 };
 
 const advanceStage = async (booking: any, stage: number) => {
@@ -127,13 +131,40 @@ const advanceStage = async (booking: any, stage: number) => {
         latitude: booking.source.latitude,
         radiusKm,
     });
+    const passengerId = booking.passenger?._id ? String(booking.passenger._id) : null;
+    let notifiedCount = 0;
     if (driverIds.length > 0) {
-        await storeNotifiedDriversService(bookingId, driverIds);
-        await notifyDrivers(bookingId, driverIds, buildRideInfo(booking));
+        const notifiedDriverIds = await notifyDrivers(bookingId, driverIds, buildRideInfo(booking));
+        notifiedCount = notifiedDriverIds.length;
+        if (notifiedDriverIds.length > 0) {
+            await storeNotifiedDriversService(bookingId, notifiedDriverIds);
+        }
+        if (notifiedDriverIds.length < driverIds.length) {
+            logger.warn(`[SEARCH] stage ${stage} bookingId=${bookingId} notification incomplete=${notifiedDriverIds.length}/${driverIds.length}`);
+            if (passengerId) {
+                await notifyPassenger({
+                    bookingId,
+                    passengerId,
+                    status: null,
+                    driverId: null,
+                    searchProgress: { stage, radiusKm },
+                });
+            }
+            return false;
+        }
     }
     await setSearchStageService(bookingId, stage);
-    logger.info(`[SEARCH] stage ${stage} bookingId=${bookingId} radius=${radiusKm}km notified=${driverIds.length}`);
-    return driverIds.length;
+    if (passengerId) {
+        await notifyPassenger({
+            bookingId,
+            passengerId,
+            status: null,
+            driverId: null,
+            searchProgress: { stage, radiusKm },
+        });
+    }
+    logger.info(`[SEARCH] stage ${stage} bookingId=${bookingId} radius=${radiusKm}km notified=${notifiedCount}`);
+    return true;
 };
 
 const hasDriver = (booking: any) => Boolean(booking.driver);
@@ -157,6 +188,7 @@ export const expireBookingSearch = async (booking: any) => {
         cancelledBy: "system",
         reason: "no_driver_found",
         cancelledAt: new Date(),
+        requireUnassigned: true,
     });
     if (!updated) return null; // claimed or already terminal — leave it
 
@@ -167,7 +199,7 @@ export const expireBookingSearch = async (booking: any) => {
     }
     await deleteSearchStageService(bookingId);
     await deleteRidePassengerService(bookingId);
-    await notifyPassenger({ bookingId, passengerId, status: "cancelled", driverId: null });
+    await notifyPassenger({ bookingId, passengerId, status: "cancelled", driverId: null, cancelledBy: "system" });
     logger.info(`[SEARCH] expired bookingId=${bookingId} (no_driver_found) noticed=${notified.length}`);
     return updated;
 };
@@ -186,20 +218,26 @@ export const runDriverSearchCycle = async (): Promise<{ advanced: number; expire
         const bookingId = String(booking._id);
         const elapsedMs = Date.now() - booking._id.getTimestamp().getTime();
 
-        if (elapsedMs >= SEARCH_MAX_DURATION_MS) {
+        const currentStage = await getSearchStageService(bookingId);
+        const finalStage = SEARCH_RADII_KM.length - 1;
+        if (
+            elapsedMs >= SEARCH_MAX_DURATION_MS + SEARCH_FINAL_RETRY_GRACE_MS ||
+            (elapsedMs >= SEARCH_MAX_DURATION_MS && currentStage >= finalStage)
+        ) {
             const result = await expireBookingSearch(booking);
             if (result) expired++;
             continue;
         }
 
-        const currentStage = await getSearchStageService(bookingId);
         const targetStage = firstStageFromElapsed(elapsedMs);
-        if (targetStage > currentStage) {
+        for (let stage = currentStage + 1; stage <= targetStage; stage++) {
             try {
-                await advanceStage(booking, targetStage);
+                const didAdvance = await advanceStage(booking, stage);
+                if (!didAdvance) break;
                 advanced++;
             } catch (err) {
-                logger.error(`[SEARCH] failed to advance bookingId=${bookingId}`, err);
+                logger.error(`[SEARCH] failed to advance bookingId=${bookingId} to stage=${stage}`, err);
+                break;
             }
         }
     }
@@ -210,11 +248,18 @@ export const runDriverSearchCycle = async (): Promise<{ advanced: number; expire
 };
 
 export const startDriverSearchSweeper = (intervalMs: number) => {
+    let running = false;
     return setInterval(() => {
-        runDriverSearchCycle().catch((err) => {
-            logger.error("[SEARCH] sweep failed", err);
-        });
+        if (running) return;
+        running = true;
+        runDriverSearchCycle()
+            .catch((err) => {
+                logger.error("[SEARCH] sweep failed", err);
+            })
+            .finally(() => {
+                running = false;
+            });
     }, intervalMs);
 };
 
-export { SEARCH_RADII_KM, SEARCH_STAGE_INTERVAL_MS, SEARCH_MAX_DURATION_MS };
+export { SEARCH_RADII_KM, SEARCH_STAGE_INTERVAL_MS, SEARCH_MAX_DURATION_MS, SEARCH_FINAL_RETRY_GRACE_MS };

@@ -12,7 +12,7 @@ import { connectRedis, disconnectRedis } from './lib/redis';
 
 const app = express();
 app.use(express.json())
-app.use(cors())
+app.use(cors({ origin: serverConfig.TRUSTED_ORIGINS, credentials: true }))
 
 /**
  * Registering all the routers and their corresponding routes with out app server object.
@@ -37,7 +37,7 @@ const httpServer = http.createServer(app)
 const socketServer = http.createServer(app)
 export const io = new Server(socketServer, {
   cors: {
-    origin: ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    origin: serverConfig.TRUSTED_ORIGINS,
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -51,19 +51,19 @@ async function start() {
     console.log("Redis connected");
 
     // Start HTTP API server
-    const PORT = serverConfig.PORT || 3001;
-    const SOCKET_PORT = serverConfig.SOCKET_PORT || 3002;
+    const PORT = serverConfig.PORT || 5001;
+    const SOCKET_PORT = serverConfig.SOCKET_PORT || 5002;
 
-    httpServer.listen({ port: PORT, host: '0.0.0.0', reuseAddr: true }, () => {
-        console.log(`HTTP API Server is running on http://localhost:${PORT}`)
+    httpServer.listen({ port: PORT, host: serverConfig.BIND_HOST, reuseAddr: true }, () => {
+        console.log(`HTTP API server listening on port ${PORT}`)
     })
 
     httpServer.on('error', (err: Error) => {
         console.error(`HTTP Server error:`, err)
     })
 
-    socketServer.listen({ port: SOCKET_PORT, host: '0.0.0.0', reuseAddr: true }, () => {
-        console.log(`Socket.IO Server is running on http://localhost:${SOCKET_PORT}`)
+    socketServer.listen({ port: SOCKET_PORT, host: serverConfig.BIND_HOST, reuseAddr: true }, () => {
+        console.log(`Socket.IO server listening on port ${SOCKET_PORT}`)
     })
 
     socketServer.on('error', (err: Error) => {

@@ -8,6 +8,7 @@ export type BookingCancellationMeta = {
     cancelledBy: "passenger" | "driver" | "system"
     reason: string
     cancelledAt: Date
+    requireUnassigned?: boolean
 }
 
 export const createBookingRepository = async (bookingData: any) => {
@@ -51,6 +52,7 @@ export const cancelBookingRepository = async ({
     cancelledBy,
     reason,
     cancelledAt,
+    requireUnassigned = false,
 }: {
     bookingId: string
     passengerId: string
@@ -60,6 +62,7 @@ export const cancelBookingRepository = async ({
             _id: new Types.ObjectId(bookingId),
             passenger: new Types.ObjectId(passengerId),
             status: fromStatus,
+            ...(requireUnassigned ? { driver: null } : {}),
         },
         {
             $set: {

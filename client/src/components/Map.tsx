@@ -28,8 +28,8 @@ import type { RouteResult, SelectedLocation } from "@/lib/places-api"
 
 setWorkerUrl(maplibreWorkerUrl)
 
-const LIGHT_STYLE_URL = "https://tiles.openfreemap.org/styles/positron"
-const DARK_STYLE_URL = "https://tiles.openfreemap.org/styles/dark"
+const LIGHT_STYLE_URL = import.meta.env.VITE_MAP_STYLE_URL || "https://tiles.openfreemap.org/styles/positron"
+const DARK_STYLE_URL = import.meta.env.VITE_MAP_DARK_STYLE_URL || "https://tiles.openfreemap.org/styles/dark"
 const DEFAULT_CENTER: [number, number] = [67.0011, 24.8607]
 const DEFAULT_ZOOM = 11
 const BRIGHT_LABEL_COLOR = "rgb(245, 245, 245)"
@@ -339,7 +339,30 @@ const ROUTE_EMPTY_GEOJSON = {
   features: [],
 } as const
 
-function ensureRouteLayers(map: MapLibreMap) {
+type MapTheme = "light" | "dark"
+
+const ROUTE_COLORS: Record<MapTheme, {
+  routeCasing: string
+  route: string
+  navCasing: string
+  nav: string
+}> = {
+  light: {
+    routeCasing: "#5a3a25",
+    route: "#c88952",
+    navCasing: "#1e3a8a",
+    nav: "#2563eb",
+  },
+  dark: {
+    routeCasing: "#5f402c",
+    route: "#e5bd97",
+    navCasing: "#172554",
+    nav: "#60a5fa",
+  },
+}
+
+function ensureRouteLayers(map: MapLibreMap, theme: MapTheme = "light") {
+  const colors = ROUTE_COLORS[theme]
   if (!map.getSource(ROUTE_SOURCE_ID)) {
     map.addSource(ROUTE_SOURCE_ID, {
       type: "geojson",
@@ -356,7 +379,7 @@ function ensureRouteLayers(map: MapLibreMap) {
         "line-join": "round",
       },
       paint: {
-        "line-color": "#26221c",
+        "line-color": colors.routeCasing,
         "line-width": 7,
         "line-opacity": 0.45,
       },
@@ -372,7 +395,7 @@ function ensureRouteLayers(map: MapLibreMap) {
         "line-join": "round",
       },
       paint: {
-        "line-color": "#d4a574",
+        "line-color": colors.route,
         "line-width": 4,
         "line-opacity": 0.95,
       },
@@ -396,7 +419,7 @@ function ensureRouteLayers(map: MapLibreMap) {
         "line-join": "round",
       },
       paint: {
-        "line-color": "#1e3a5f",
+        "line-color": colors.navCasing,
         "line-width": 7,
         "line-opacity": 0.55,
       },
@@ -412,15 +435,13 @@ function ensureRouteLayers(map: MapLibreMap) {
         "line-join": "round",
       },
       paint: {
-        "line-color": "#3b82f6",
+        "line-color": colors.nav,
         "line-width": 4,
         "line-opacity": 0.98,
       },
     })
   }
 }
-
-type MapTheme = "light" | "dark"
 
 interface MapProps {
   className?: string
@@ -451,6 +472,7 @@ interface MapProps {
     heading?: number | null
     speed?: number | null
   } | null
+  followDriver?: boolean
   /**
    * When true, zooms out once to the route bounds and runs the temporary
    * driver-search overlays (subtle rings at the pickup + small PNG cars).
@@ -471,6 +493,7 @@ export default function Map({
   pickMode = null,
   onPickPoint,
   driverLocation = null,
+  followDriver = false,
   searching = false,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -793,7 +816,7 @@ export default function Map({
       })
       map.addControl(geolocate, "top-right")
       map.on("style.load", () => {
-        ensureRouteLayers(map)
+        ensureRouteLayers(map, themeRef.current)
         setRouteTick((t) => t + 1)
         applyEnglishLabels(map)
         if (themeRef.current === "dark") applyDarkLabelColors(map)
@@ -850,6 +873,11 @@ export default function Map({
     if (canvas) canvas.style.cursor = pickMode ? "crosshair" : ""
   }, [pickMode])
 
+  const fromLongitude = from?.longitude ?? null
+  const fromLatitude = from?.latitude ?? null
+  const toLongitude = to?.longitude ?? null
+  const toLatitude = to?.latitude ?? null
+
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
@@ -859,21 +887,21 @@ export default function Map({
     fromMarkerRef.current = null
     toMarkerRef.current = null
 
-    if (from) {
+    if (fromLongitude !== null && fromLatitude !== null) {
       fromMarkerRef.current = new Marker({
         element: createLocationMarkerElement("from"),
       })
-        .setLngLat([from.longitude, from.latitude])
+        .setLngLat([fromLongitude, fromLatitude])
         .addTo(map)
     }
-    if (to) {
+    if (toLongitude !== null && toLatitude !== null) {
       toMarkerRef.current = new Marker({
         element: createLocationMarkerElement("to"),
       })
-        .setLngLat([to.longitude, to.latitude])
+        .setLngLat([toLongitude, toLatitude])
         .addTo(map)
     }
-  }, [mapReady, from, to])
+  }, [mapReady, fromLongitude, fromLatitude, toLongitude, toLatitude])
 
   useEffect(() => {
     const map = mapRef.current
@@ -940,6 +968,13 @@ export default function Map({
     }
 
     startDriverAnimation()
+    if (followDriver) {
+      map.easeTo({
+        center: [next.lng, next.lat],
+        duration: 500,
+        essential: true,
+      })
+    }
     // latest fixes supersede any stale animation target already in flight
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -948,6 +983,7 @@ export default function Map({
     driverLocation?.longitude,
     driverLocation?.heading,
     driverLocation?.speed,
+    followDriver,
   ])
 
   useEffect(() => {
@@ -1017,7 +1053,7 @@ export default function Map({
     const map = mapRef.current
     if (!map || !mapReady) return
 
-    if (map.isStyleLoaded()) ensureRouteLayers(map)
+    if (map.isStyleLoaded()) ensureRouteLayers(map, themeRef.current)
 
     const source = map.getSource(ROUTE_SOURCE_ID) as GeoJSONSource | undefined
     if (!source) return
@@ -1056,7 +1092,7 @@ export default function Map({
     const map = mapRef.current
     if (!map || !mapReady) return
 
-    if (map.isStyleLoaded()) ensureRouteLayers(map)
+    if (map.isStyleLoaded()) ensureRouteLayers(map, themeRef.current)
 
     const source = map.getSource(NAV_ROUTE_SOURCE_ID) as GeoJSONSource | undefined
     if (!source) return
@@ -1066,7 +1102,7 @@ export default function Map({
         ? { type: "Feature", properties: {}, geometry: navRoute.geometry }
         : ROUTE_EMPTY_GEOJSON,
     )
-  }, [mapReady, navRoute])
+  }, [mapReady, navRoute, routeTick])
 
   // Camera fitting for navigation phase: fit once per phase change
   useEffect(() => {

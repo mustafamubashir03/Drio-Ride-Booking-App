@@ -13,17 +13,19 @@ export async function notifyDriversController(req: Request, res: Response): Prom
             rideInfo,
             timeStamps: new Date().toISOString()
         }
+        const notifiedDriverIds: string[] = [];
         for (const driverId of driverIds) {
             const socketId = await getDriverSocket(driverId)
             logger.info(`[NOTIFICATION] driverId=${driverId}, socketId=${socketId}`);
-            if (socketId) {
+            if (socketId && io.sockets.sockets.has(socketId)) {
                 io.to(socketId).emit('new_ride_notification', notificationDTO)
+                notifiedDriverIds.push(driverId);
                 logger.info(`[NOTIFICATION] Emitted new_ride_notification to driverId=${driverId}, socketId=${socketId}`);
             } else {
                 logger.warn(`[NOTIFICATION] No socket found for driverId=${driverId}`);
             }
         }
-        res.status(200).json({ success: true, message: "Notification sent successfully" })
+        res.status(200).json({ success: true, message: "Notification sent successfully", notifiedDriverIds })
     }
     catch (error) {
         logger.error("[NOTIFICATION] notify-drivers error:", error)
@@ -53,7 +55,7 @@ export async function removeRideNotificationController(req: Request, res: Respon
 
 export async function notifyPassengerController(req: Request, res: Response): Promise<void> {
     try {
-        const { bookingId, passengerId, status, driverId } = req.body;
+        const { bookingId, passengerId, status, driverId, searchProgress, cancelledBy } = req.body;
         if (!bookingId || !passengerId) {
             res.status(400).json({ success: false, message: "bookingId and passengerId are required" })
             return;
@@ -63,6 +65,8 @@ export async function notifyPassengerController(req: Request, res: Response): Pr
             rideId: bookingId,
             status: status ?? null,
             driverId: driverId ?? null,
+            searchProgress: searchProgress ?? null,
+            cancelledBy: cancelledBy ?? null,
             timeStamps: new Date().toISOString(),
         };
         io.to(passengerRoom(passengerId)).emit('ride_status_update', payload);
