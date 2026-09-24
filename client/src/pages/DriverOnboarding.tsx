@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { MotionPage } from "@/motion/MotionPage";
+import { AccountSwitcher } from "@/components/AccountSwitcher";
 import {
   createDriverApplication,
   fetchMyDriverApplication,
@@ -91,32 +93,37 @@ export default function DriverOnboarding() {
 
   if (sessionPending || loading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-background">
+      <MotionPage className="flex min-h-dvh items-center justify-center bg-background">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary" />
-      </div>
+      </MotionPage>
     );
   }
 
   const hasApplication = Boolean(app);
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
-      <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-border px-6 md:px-10">
-        <div className="flex items-center gap-3">
+    <MotionPage className="flex min-h-dvh flex-col bg-background">
+      <header className="flex min-h-[64px] shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] sm:h-[64px] sm:flex-nowrap sm:px-6 sm:py-0 sm:pt-0 md:px-10">
+        <div className="flex min-w-0 items-center gap-3">
           <Logo />
           <Separator className="h-5 data-horizontal:h-5 data-horizontal:w-px" />
           <span className="text-[13px] font-medium text-muted-foreground">
             Driver onboarding
           </span>
         </div>
-        <Link to="/dashboard">
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
-            Back to passenger app
-          </Button>
-        </Link>
+        <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
+          <AccountSwitcher compact placement="bottom">
+            <span />
+          </AccountSwitcher>
+          <Link to="/dashboard" className="w-auto">
+            <Button variant="ghost" size="sm" className="w-auto px-2 text-[11px] text-muted-foreground sm:px-3 sm:text-[12px]">
+              Back to passenger app
+            </Button>
+          </Link>
+        </div>
       </header>
 
-      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-8">
+      <main className="mx-auto w-full min-w-0 max-w-2xl flex-1 px-6 py-8">
         <div className="mb-7">
           <h1 className="font-serif text-[1.75rem] font-bold tracking-tight text-foreground">
             Ready to drive with Drio?
@@ -257,7 +264,7 @@ export default function DriverOnboarding() {
                 <Button
                   id="start-driver-application"
                   size="lg"
-                  className="mt-5 w-full font-semibold"
+                  className="mt-5 w-full font-semibold hover:scale-[1.01]"
                   onClick={handleStart}
                   disabled={creating}
                 >
@@ -277,7 +284,7 @@ export default function DriverOnboarding() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                   <Button
                     size="lg"
                     className="flex-1 font-semibold"
@@ -285,8 +292,8 @@ export default function DriverOnboarding() {
                   >
                     View application status
                   </Button>
-                  <Link to="/dashboard">
-                    <Button size="lg" variant="outline">
+                  <Link to="/dashboard" className="w-full sm:w-auto">
+                    <Button size="lg" variant="outline" className="w-full sm:w-auto">
                       Back to dashboard
                     </Button>
                   </Link>
@@ -296,6 +303,6 @@ export default function DriverOnboarding() {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </MotionPage>
   );
 }

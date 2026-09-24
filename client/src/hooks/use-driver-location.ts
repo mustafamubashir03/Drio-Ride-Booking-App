@@ -49,18 +49,18 @@ function errorMessageFor(code: number) {
   }
 }
 
+interface UseDriverLocationOptions {
+  onLocationUpdate?: (location: { latitude: number; longitude: number; accuracy: number | null; heading: number | null; speed: number | null; timestamp: number }) => void;
+  throttleMs?: number;
+}
+
 /**
  * Browser-geolocation wrapper for the driver portal.
  *
- * This is a local abstraction only: it exposes the device position (plus
- * heading and speed when the platform provides them) to the UI and does NOT
- * push to the server. [FUTURE REDIS + SOCKET.IO] — once the
- * driver-location service is connected to Redis (GEOADD/GEOSEARCH) and a
- * Socket.IO dispatch layer exists, the position produced here can be streamed
- * to `/api/v1/driver/location` for matching. That integration is intentionally
- * OUT OF SCOPE for the current milestone.
+ * Streams location to the provided callback for realtime server updates.
  */
-export function useDriverLocation(): DriverLocationState & DriverLocationController {
+export function useDriverLocation(options: UseDriverLocationOptions = {}): DriverLocationState & DriverLocationController {
+  const { onLocationUpdate, throttleMs = 3000 } = options;
   const [state, setState] = useState<DriverLocationState>(() => ({
     ...INITIAL_STATE,
     permission:
@@ -69,6 +69,12 @@ export function useDriverLocation(): DriverLocationState & DriverLocationControl
         : "unsupported",
   }));
   const watchIdRef = useRef<number | null>(null);
+  const lastEmitRef = useRef<number>(0);
+  const onLocationUpdateRef = useRef(onLocationUpdate);
+
+  useEffect(() => {
+    onLocationUpdateRef.current = onLocationUpdate;
+  }, [onLocationUpdate]);
 
   const stop = useCallback(() => {
     if (watchIdRef.current !== null) {
@@ -89,7 +95,7 @@ export function useDriverLocation(): DriverLocationState & DriverLocationControl
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         const coords = position.coords;
-        setState({
+        const newState: DriverLocationState = {
           latitude: coords.latitude,
           longitude: coords.longitude,
           accuracy: coords.accuracy,
@@ -105,7 +111,22 @@ export function useDriverLocation(): DriverLocationState & DriverLocationControl
           tracking: true,
           permission: "granted",
           error: null,
-        });
+        };
+        setState(newState);
+
+        // Throttled location emission to socket server
+        const now = Date.now();
+        if (onLocationUpdateRef.current && now - lastEmitRef.current >= throttleMs) {
+          lastEmitRef.current = now;
+          onLocationUpdateRef.current({
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            accuracy: coords.accuracy,
+            heading: newState.heading,
+            speed: newState.speed,
+            timestamp: position.timestamp,
+          });
+        }
       },
       (error) => {
         setState((prev) => ({
@@ -121,7 +142,7 @@ export function useDriverLocation(): DriverLocationState & DriverLocationControl
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 1000 }
     );
-  }, []);
+  }, [throttleMs]);
 
   useEffect(() => {
     return () => {

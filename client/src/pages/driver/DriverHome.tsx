@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import { useOutletContext } from "react-router-dom";
+import { authClient } from "@/lib/auth-client";
 import Map from "@/components/Map";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useRoute } from "@/hooks/use-route";
+import { useNavigationRoute } from "@/hooks/use-navigation-route";
 import { useDriverLocation } from "@/hooks/use-driver-location";
+import { MotionPage } from "@/motion/MotionPage";
+import { AnimatePresence, motion } from "motion/react";
+import { motionStateProps, useMotionSystem } from "@/motion/use-motion";
+import type { DriverDashboardContext } from "./DriverLayout";
 import {
   fetchDriverActiveRide,
   fetchDriverAvailability,
@@ -44,7 +51,7 @@ function actionForStatus(status: DriverRide["status"]): RideAction {
     case "pending":
       return { key: "accept", label: "Accept ride", variant: "default" };
     case "confirmed":
-      return { key: "arriving", label: "I'm on my way", variant: "secondary" };
+      return { key: "arriving", label: "I'm Arriving", variant: "secondary" };
     case "arriving":
       return { key: "arrived", label: "I've arrived", variant: "secondary" };
     case "arrived":
@@ -76,6 +83,10 @@ function toLocation(place: DriverRide["source"]): SelectedLocation {
 }
 
 export default function DriverHome() {
+  const { data: session } = authClient.useSession();
+  const driverId = (session as unknown as { user?: { id?: string } })?.user?.id;
+  const { page, stagger, reduced } = useMotionSystem();
+  const { connect, disconnect, emitLocation, rideRefreshKey } = useOutletContext<DriverDashboardContext>();
   const [availability, setAvailability] = useState<DriverAvailability | null>(null);
   const [availabilityLoading, setAvailabilityLoading] = useState(true);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
@@ -90,44 +101,112 @@ export default function DriverHome() {
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const location = useDriverLocation();
-  const loadSeq = useRef(0);
+  const location = useDriverLocation({
+    onLocationUpdate: (loc) => {
+      if (driverId) {
+        emitLocation({
+          driverId,
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          accuracy: loc.accuracy,
+          heading: loc.heading,
+          speed: loc.speed,
+          timestamp: loc.timestamp,
+        });
+      }
+    },
+    throttleMs: 3000,
+  });
+  const availabilityLoadSeq = useRef(0);
+  const activeRideLoadSeq = useRef(0);
 
   const from: SelectedLocation | null = activeRide ? toLocation(activeRide.source) : null;
   const to: SelectedLocation | null = activeRide ? toLocation(activeRide.destination) : null;
-  const { route, status: routeStatus, error: routeError } = useRoute(from, to);
+
+  // Static route for FROM→TO display when NOT in active navigation (confirmed, arrived, etc.)
+  const { route: staticRoute, status: routeStatus, error: routeError } = useRoute(from, to);
+
+  // Determine navigation phase and target from booking status. Once a ride is
+  // confirmed the driver navigates to the pickup (DRIVER→FROM); after the trip
+  // starts the target switches to the destination (DRIVER→TO).
+  const navPhase = activeRide
+    ? (activeRide.status === "confirmed" || activeRide.status === "arriving")
+      ? "arriving"
+      : activeRide.status === "in_progress"
+      ? "in_progress"
+      : null
+    : null;
+
+  const navTarget = activeRide
+    ? (activeRide.status === "confirmed" || activeRide.status === "arriving")
+      ? from
+      : activeRide.status === "in_progress"
+      ? to
+      : null
+    : null;
+
+  const driverOrigin = location.latitude !== null && location.longitude !== null
+    ? { latitude: location.latitude, longitude: location.longitude }
+    : null;
+
+  // Dynamic navigation route for arriving/in_progress phases
+  const { route: navRoute, status: navRouteStatus, error: navRouteError } = useNavigationRoute({
+    phase: navPhase,
+    origin: driverOrigin,
+    target: navTarget,
+  });
+
+  // Active route to display: navRoute during active navigation, otherwise staticRoute.
+  // When navigating but no nav polyline has resolved yet, keep the card honest by
+  // showing "—" instead of falling back to the FROM→TO leg (which belongs to a different phase).
+  const displayRoute = navPhase ? navRoute : staticRoute;
+  const displayRouteStatus = navPhase ? navRouteStatus : routeStatus;
+  const displayRouteError = navPhase ? navRouteError : routeError;
+
+  // ETA label must reflect the phase: pickup leg while navigating to pickup,
+  // destination leg while en route, and plain trip time otherwise (never an
+  // active estimate once the navigation leg is over).
+  const etaLabel =
+    navPhase === "arriving"
+      ? "ETA to pickup"
+      : navPhase === "in_progress"
+        ? "ETA to destination"
+        : "Trip time";
+
+  // Stable phase ID for Map camera fitting (only fit once per phase)
+  const navPhaseId = navPhase ? `${navPhase}-${activeRide?._id}` : null;
 
   const loadAvailability = async () => {
-    const seq = ++loadSeq.current;
+    const seq = ++availabilityLoadSeq.current;
     setAvailabilityLoading(true);
     setAvailabilityError(null);
     try {
       const value = await fetchDriverAvailability();
-      if (seq !== loadSeq.current) return;
+      if (seq !== availabilityLoadSeq.current) return;
       setAvailability(value);
       if (value.status === "online") location.start();
     } catch (e) {
-      if (seq !== loadSeq.current) return;
+      if (seq !== availabilityLoadSeq.current) return;
       setAvailability(null);
       setAvailabilityError(e instanceof Error ? e.message : "Could not load your status.");
     } finally {
-      if (seq === loadSeq.current) setAvailabilityLoading(false);
+      if (seq === availabilityLoadSeq.current) setAvailabilityLoading(false);
     }
   };
 
   const loadActiveRide = async (keepLoading = false) => {
-    const seq = ++loadSeq.current;
+    const seq = ++activeRideLoadSeq.current;
     if (!keepLoading) setActiveLoading(true);
-    setActiveError(null);
     try {
       const ride = await fetchDriverActiveRide();
-      if (seq !== loadSeq.current) return;
+      if (seq !== activeRideLoadSeq.current) return;
       setActiveRide(ride);
+      setActiveError(null);
     } catch (e) {
-      if (seq !== loadSeq.current) return;
+      if (seq !== activeRideLoadSeq.current) return;
       setActiveError(e instanceof Error ? e.message : "Could not load your active ride.");
     } finally {
-      if (seq === loadSeq.current) setActiveLoading(false);
+      if (seq === activeRideLoadSeq.current) setActiveLoading(false);
     }
   };
 
@@ -144,11 +223,31 @@ export default function DriverHome() {
     void loadAvailability();
     void loadActiveRide();
     void loadSummary();
-    // Automatically request location permission on mount — once granted, the
-    // driver's live position is tracked without needing to press any button.
-    location.start();
-    // run once on mount; explicit refresh buttons re-run these
+    // GPS acquisition is tied to the online lifecycle: loadAvailability starts
+    // the watcher when the persisted status is online, and the online/offline
+    // toggle starts/stops it. While offline there is no active GPS watcher.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The context bumps rideRefreshKey when the driver accepts a ride mid-session
+  // (ride card + nav need the fresh booking state immediately).
+  useEffect(() => {
+    if (rideRefreshKey > 0) {
+      const refresh = setTimeout(() => void loadActiveRide(true), 0);
+      return () => clearTimeout(refresh);
+    }
+  }, [rideRefreshKey]);
+
+  // Returning to the tab is the moment the ride card most often goes stale
+  // (a ride may have been accepted/advanced from another session or tab).
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setTimeout(() => void loadActiveRide(true), 0);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   const handleToggleAvailability = async () => {
@@ -158,8 +257,16 @@ export default function DriverHome() {
     try {
       const updated = await setDriverAvailability(next);
       setAvailability(updated);
-      if (next === "online") location.start();
-      else location.stop();
+      if (next === "online") {
+        location.start();
+        connect();
+        // Emit driver login to socket server with driver ID from auth
+        // The driverId is available from the auth context
+        // We'll get it from the authUser in the driver-api context
+      } else {
+        location.stop();
+        disconnect();
+      }
     } catch (e) {
       setAvailabilityError(e instanceof Error ? e.message : "Could not update your status.");
     } finally {
@@ -206,30 +313,58 @@ export default function DriverHome() {
   const online = availability?.status === "online";
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      {/* ── Left panel ─────────────────────────────────────────── */}
-      <div className="flex w-[380px] shrink-0 flex-col border-r border-border overflow-y-auto">
-        <div className="flex-1 p-6 space-y-5">
-          {availabilityLoading || activeLoading ? (
-            <div className="rounded-xl border border-border bg-card px-4 py-8 text-center">
-              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary" />
-              <p className="mt-3 text-[13px] text-muted-foreground">
-                Loading your driver status…
-              </p>
-            </div>
-          ) : availabilityError ? (
-            <div className="rounded-xl border border-border bg-card px-4 py-6 text-center">
-              <p className="text-[13px] font-semibold text-destructive">
-                Could not load your driver status
-              </p>
-              <p className="mt-1 text-[12px] text-muted-foreground">{availabilityError}</p>
-              <Button size="sm" className="mt-4" onClick={() => void loadAvailability()}>
-                <RefreshCcw className="h-3.5 w-3.5" />
-                Retry
-              </Button>
-            </div>
-          ) : (
-            <>
+    <MotionPage className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row lg:overflow-hidden">
+      <div className="relative h-[clamp(8rem,50svh,28rem)] w-full shrink-0 overflow-hidden bg-drio-deep lg:relative lg:inset-auto lg:z-0 lg:h-auto lg:w-auto lg:flex-1 lg:order-2">
+        <Map
+          className="h-full w-full"
+          from={from}
+          to={to}
+          route={staticRoute}
+          navRoute={navRoute}
+          navPhaseId={navPhaseId}
+          driverLocation={driverMarker}
+        />
+      </div>
+
+      <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col lg:static lg:z-auto lg:flex lg:min-h-0 lg:w-[380px] lg:flex-none lg:flex-col lg:order-1 lg:border-r lg:shadow-none">
+        <div className="flex justify-center pt-3 pb-1 lg:hidden">
+          <div className="h-1 w-10 rounded-full bg-border" />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-t-3xl border-t border-x border-border bg-background shadow-2xl lg:min-h-0 lg:max-h-none lg:flex-1 lg:overflow-y-auto lg:rounded-none lg:border-0 lg:shadow-none">
+          <div className="p-4 lg:p-6">
+          <AnimatePresence mode="wait">
+            {availabilityLoading || activeLoading ? (
+              <motion.div
+                {...motionStateProps({ variants: page, reduced })}
+                key="loading"
+                className="rounded-xl border border-border bg-card px-4 py-8 text-center"
+              >
+                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary" />
+                <p className="mt-3 text-[13px] text-muted-foreground">
+                  Loading your driver status…
+                </p>
+              </motion.div>
+            ) : availabilityError ? (
+              <motion.div
+                {...motionStateProps({ variants: page, reduced })}
+                key="error"
+                className="rounded-xl border border-border bg-card px-4 py-6 text-center"
+              >
+                <p className="text-[13px] font-semibold text-destructive">
+                  Could not load your driver status
+                </p>
+                <p className="mt-1 text-[12px] text-muted-foreground">{availabilityError}</p>
+                <Button size="sm" className="mt-4" onClick={() => void loadAvailability()}>
+                  <RefreshCcw className="h-3.5 w-3.5" />
+                  Retry
+                </Button>
+              </motion.div>
+            ) : (
+              <motion.div
+                {...motionStateProps({ variants: page, reduced })}
+                key="content"
+                className="space-y-5"
+              >
               {/* Online/offline */}
               <div className="rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -244,17 +379,23 @@ export default function DriverHome() {
                     </p>
                   </div>
                   <span
-                    className={`mt-0.5 rounded-full px-3 py-1 text-[11px] font-semibold ${online
+                    className={`mt-0.5 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${online
                         ? "bg-drio-success/15 text-drio-success"
                         : "bg-amber-500/15 text-amber-500"
                       }`}
                   >
-                    {online ? "● Online" : "○ Offline"}
+                    <span
+                      className={`inline-block h-1.5 w-1.5 rounded-full ${online
+                          ? "bg-drio-success animate-pulse"
+                          : "bg-amber-500/80"
+                        }`}
+                    />
+                    {online ? "Online" : "Offline"}
                   </span>
                 </div>
                 <Button
                   variant={online ? "destructive" : "default"}
-                  className="mt-4 w-full"
+                  className="mt-4 w-full hover:scale-[1.01]"
                   onClick={() => void handleToggleAvailability()}
                   disabled={availabilitySubmitting}
                 >
@@ -299,7 +440,7 @@ export default function DriverHome() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="mt-3 w-full"
+                      className="mt-3 w-full hover:scale-[1.01]"
                       onClick={location.start}
                       disabled={location.permission === "unsupported"}
                     >
@@ -322,11 +463,16 @@ export default function DriverHome() {
               )}
 
               {/* Active ride card */}
-              {activeRide ? (
-                <div className="space-y-4">
-                  <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">
-                    Active ride
-                  </p>
+              <AnimatePresence mode="wait">
+                {activeRide ? (
+                  <motion.div
+                    {...motionStateProps({ variants: page, reduced })}
+                    key="active"
+                    className="space-y-4"
+                  >
+                    <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">
+                      Active ride
+                    </p>
                   <div className="rounded-2xl border border-border bg-card p-4">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[13px] font-semibold text-foreground">Ride request</p>
@@ -381,21 +527,21 @@ export default function DriverHome() {
                       </div>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-3 gap-2">
+<div className="mt-3 grid grid-cols-3 gap-2">
                       <div className="rounded-xl bg-secondary/60 border border-border px-3 py-2.5">
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Distance</p>
                         <p className="mt-0.5 text-[13px] font-semibold text-foreground">
-                          {route
-                            ? formatDistance(route.distance)
+                          {displayRoute
+                            ? formatDistance(displayRoute.distance)
                             : activeRide.distance
-                              ? formatDistance(activeRide.distance)
-                              : "—"}
+                            ? formatDistance(activeRide.distance)
+                            : "—"}
                         </p>
                       </div>
                       <div className="rounded-xl bg-secondary/60 border border-border px-3 py-2.5">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">ETA</p>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{etaLabel}</p>
                         <p className="mt-0.5 text-[13px] font-semibold text-foreground">
-                          {route ? formatDuration(route.duration) : "—"}
+                          {displayRoute ? formatDuration(displayRoute.duration) : "—"}
                         </p>
                       </div>
                       <div className="rounded-xl bg-secondary/60 border border-border px-3 py-2.5">
@@ -414,7 +560,7 @@ export default function DriverHome() {
 
                   {actionForStatus(activeRide.status) && (
                     <Button
-                      className="w-full rounded-2xl"
+                      className="w-full rounded-2xl hover:scale-[1.01]"
                       variant={actionForStatus(activeRide.status)!.variant}
                       size="lg"
                       onClick={() => void handleRideAction()}
@@ -427,74 +573,85 @@ export default function DriverHome() {
                     </Button>
                   )}
                   {actionError && <p className="text-[12px] text-destructive">{actionError}</p>}
-                </div>
-              ) : (
-                <p className="flex items-start gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground">
-                  <Warehouse className="mt-0.5 h-4 w-4 shrink-0 text-drio-violet" />
-                  No active ride. You can accept a requested ride once it has been
-                  assigned to you.
-                </p>
-              )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    {...motionStateProps({ variants: page, reduced })}
+                    key="none"
+                    className="flex items-start gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground"
+                  >
+                    <Warehouse className="mt-0.5 h-4 w-4 shrink-0 text-drio-violet" />
+                    No active ride. You can accept a requested ride once it has been
+                    assigned to you.
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Completion summary */}
-              {completedRide && (
-                <div className="rounded-2xl border border-drio-success/25 bg-drio-success/5 p-4">
-                  <p className="text-[15px] font-semibold text-foreground">Trip completed</p>
-                  <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-                    Fare {formatFare(completedRide.fare)} for a{" "}
-                    {formatDistance(completedRide.distance)} trip has been counted
-                    toward your earnings.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3 w-full"
-                    onClick={() => setCompletedRide(null)}
+              <AnimatePresence>
+                {completedRide && (
+                  <motion.div
+                    {...motionStateProps({ variants: page, reduced })}
+                    key="completed"
+                    className="rounded-2xl border border-drio-success/25 bg-drio-success/5 p-4"
                   >
-                    Done
-                  </Button>
-                </div>
-              )}
+                    <p className="text-[15px] font-semibold text-foreground">Trip completed</p>
+                    <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+                      Fare {formatFare(completedRide.fare)} for a{" "}
+                      {formatDistance(completedRide.distance)} trip has been counted
+                      toward your earnings.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 w-full hover:scale-[1.01]"
+                      onClick={() => setCompletedRide(null)}
+                    >
+                      Done
+                    </Button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Today's activity */}
               <div>
                 <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground mb-2">
                   Today&apos;s activity
                 </p>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="rounded-2xl border border-border bg-card p-4">
-                    <p className="text-[11px] text-muted-foreground">Trips</p>
-                    <p className="mt-1 text-[22px] font-bold text-foreground">
-                      {summary?.today.rides ?? 0}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-border bg-card p-4">
-                    <p className="text-[11px] text-muted-foreground">Earnings</p>
-                    <p className="mt-1 text-[18px] font-bold text-foreground">
-                      {formatFare(summary?.today.total ?? 0)}
-                    </p>
-                  </div>
-                </div>
+                <motion.div
+                  className="grid grid-cols-2 gap-2.5"
+                  variants={stagger.container}
+                  initial={reduced ? false : "hidden"}
+                  animate={reduced ? undefined : "visible"}
+                >
+                  <motion.div variants={stagger.item}>
+                    <div className="rounded-2xl border border-border bg-card p-4">
+                      <p className="text-[11px] text-muted-foreground">Trips</p>
+                      <p className="mt-1 text-[22px] font-bold text-foreground">
+                        {summary?.today.rides ?? 0}
+                      </p>
+                    </div>
+                  </motion.div>
+                  <motion.div variants={stagger.item}>
+                    <div className="rounded-2xl border border-border bg-card p-4">
+                      <p className="text-[11px] text-muted-foreground">Earnings</p>
+                      <p className="mt-1 text-[18px] font-bold text-foreground">
+                        {formatFare(summary?.today.total ?? 0)}
+                      </p>
+                    </div>
+                  </motion.div>
+                </motion.div>
               </div>
-            </>
-          )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      </div>
+        </div>{/* scroll wrapper */}
+      </div>{/* panel */}
 
-      {/* ── Right: map ─────────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="relative flex-1 overflow-hidden bg-drio-deep">
-          <Map
-            className="h-full w-full"
-            from={from}
-            to={to}
-            route={route}
-            driverLocation={driverMarker}
-          />
-        </div>
-
-        {/* Bottom strip — live ride data only; idle state gives the map full height */}
-        {activeRide ? (
+      {/* Desktop: live-ride strip overlaying the map's lower edge */}
+      {activeRide ? (
+        <div className="absolute inset-x-[380px] bottom-0 z-10 hidden lg:block">
           <div className="border-t border-border bg-card px-6 py-4">
             <div className="grid grid-cols-4 gap-4">
               {[
@@ -513,17 +670,17 @@ export default function DriverHome() {
                 {
                   icon: Warehouse,
                   label: "Distance",
-                  value: route
-                    ? formatDistance(route.distance)
+                  value: displayRoute
+                    ? formatDistance(displayRoute.distance)
                     : activeRide.distance
-                      ? formatDistance(activeRide.distance)
-                      : "—",
+                    ? formatDistance(activeRide.distance)
+                    : "—",
                   accent: "text-drio-violet",
                 },
                 {
                   icon: Radio,
-                  label: "ETA",
-                  value: route ? formatDuration(route.duration) : "—",
+                  label: etaLabel,
+                  value: displayRoute ? formatDuration(displayRoute.duration) : "—",
                   accent: "text-drio-success",
                 },
               ].map((item) => {
@@ -541,17 +698,17 @@ export default function DriverHome() {
                 );
               })}
             </div>
-            {routeStatus === "loading" && (
+            {displayRouteStatus === "loading" && (
               <p className="mt-3 text-[11px] text-muted-foreground">Calculating route…</p>
             )}
-            {routeStatus === "error" && (
+            {displayRouteStatus === "error" && (
               <p className="mt-3 text-[11px] text-destructive">
-                {routeError ?? "Could not calculate a route."}
+                {displayRouteError ?? "Could not calculate a route."}
               </p>
             )}
           </div>
-        ) : null}
-      </div>
-    </div>
+        </div>
+      ) : null}
+    </MotionPage>
   );
 }

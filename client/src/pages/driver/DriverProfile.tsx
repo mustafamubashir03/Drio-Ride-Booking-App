@@ -10,6 +10,7 @@ import {
 } from "@/lib/driver-api";
 import { formatDate } from "@/lib/format";
 import { Car, FileText, User as UserIcon } from "lucide-react";
+import { MotionPage } from "@/motion/MotionPage";
 
 function Initials(name?: string, email?: string) {
   const source = name ?? email ?? "D";
@@ -72,8 +73,8 @@ export default function DriverProfile() {
   const documents = app?.documents ?? [];
 
   return (
-    <div className="flex-1 overflow-y-auto p-8">
-      <div className="mx-auto w-full max-w-2xl space-y-5">
+    <MotionPage className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto p-4 lg:p-8">
+      <div className="mx-auto w-full min-w-0 max-w-2xl space-y-5">
         {error && (
           <div
             role="alert"
@@ -96,14 +97,14 @@ export default function DriverProfile() {
                   {Initials(user?.name, user?.email)}
                 </AvatarFallback>
               </Avatar>
-              <div className="pb-1">
-                <p className="text-[18px] font-semibold text-foreground">
+              <div className="min-w-0 flex-1 pb-1">
+                <p className="truncate text-[16px] font-semibold text-foreground sm:text-[18px]">
                   {user?.name ?? "Drio Driver"}
                 </p>
-                <p className="text-[13px] text-muted-foreground">{user?.email}</p>
+                <p className="truncate text-[12px] text-muted-foreground sm:text-[13px]">{user?.email}</p>
               </div>
-              <div className="ml-auto pb-1">
-                <span className="rounded-full bg-primary/12 border border-primary/20 px-3.5 py-1.5 text-[11px] font-semibold text-primary">
+              <div className="shrink-0 pb-1">
+                <span className="rounded-full bg-primary/12 border border-primary/20 px-2.5 py-1.5 text-[10px] font-semibold text-primary sm:px-3.5 sm:text-[11px]">
                   Driver
                 </span>
               </div>
@@ -234,6 +235,6 @@ export default function DriverProfile() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </MotionPage>
   );
 }

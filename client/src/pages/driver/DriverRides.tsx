@@ -13,6 +13,7 @@ import {
   formatPlace,
 } from "@/lib/format";
 import { Car, History, MapPin, Navigation, RefreshCcw } from "lucide-react";
+import { MotionPage } from "@/motion/MotionPage";
 
 const statusBadgeStyles: Record<string, string> = {
   pending: "bg-amber-500/15 text-amber-500 border-amber-500/25",
@@ -69,8 +70,8 @@ export default function DriverRides() {
   const groups = groupRidesByDate(rides);
 
   return (
-    <div className="flex-1 overflow-y-auto p-8">
-      <div className="mx-auto max-w-3xl space-y-6">
+    <MotionPage className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto p-4 lg:p-8">
+      <div className="mx-auto w-full min-w-0 max-w-3xl space-y-6">
         {status === "loading" && (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-card px-6 py-20 text-center">
             <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
@@ -130,7 +131,7 @@ export default function DriverRides() {
                       title={`Booking ${ride._id}`}
                       className="rounded-2xl border border-border bg-card overflow-hidden"
                     >
-                      <div className="flex items-center gap-4 px-5 py-4">
+                      <div className="flex flex-col items-stretch gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
                         <div className="flex h-12 w-16 shrink-0 items-center justify-center rounded-xl bg-secondary border border-border">
                           <Car className="h-6 w-6 text-muted-foreground/40" />
                         </div>
@@ -150,7 +151,7 @@ export default function DriverRides() {
                           </div>
                         </div>
 
-                        <div className="shrink-0 text-right">
+                        <div className="w-full shrink-0 text-left sm:w-auto sm:text-right">
                           <p className="text-[16px] font-sans font-bold text-foreground">
                             {formatFare(ride.fare)}
                           </p>
@@ -173,6 +174,6 @@ export default function DriverRides() {
           </>
         )}
       </div>
-    </div>
+    </MotionPage>
   );
 }

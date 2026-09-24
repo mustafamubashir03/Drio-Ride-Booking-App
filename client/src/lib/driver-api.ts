@@ -337,6 +337,25 @@ export async function transitionDriverRide(
     return readDriverRide(response, "Could not update this ride");
 }
 
+export async function confirmBooking(bookingId: string): Promise<DriverRide> {
+    const response = await fetch(
+        `/api/v1/driver/rides/${encodeURIComponent(bookingId)}/confirm`,
+        { method: "POST" }
+    );
+    if (!response.ok) {
+        let data: { message?: string } = {};
+        try {
+            data = (await response.json()) as typeof data;
+        } catch {
+            // fall through
+        }
+        const err = new Error(data.message ?? "Could not confirm this ride") as Error & { status?: number };
+        err.status = response.status;
+        throw err;
+    }
+    return readDriverRide(response, "Could not confirm this ride");
+}
+
 export async function fetchDriverEarnings(): Promise<DriverEarningsSummary> {
     const response = await fetch("/api/v1/driver/earnings");
     const data = (await response.json()) as {

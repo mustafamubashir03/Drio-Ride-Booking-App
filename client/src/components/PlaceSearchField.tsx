@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { Crosshair, LocateFixed, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePlaceSearch } from "@/hooks/use-place-search";
+import { AnimatePresence, motion } from "motion/react";
+import { useMotionSystem } from "@/motion/use-motion";
 import type { PlaceResult, SelectedLocation } from "@/lib/places-api";
 
 interface PlaceSearchFieldProps {
@@ -31,6 +33,7 @@ export default function PlaceSearchField({
   onPinToggle,
 }: PlaceSearchFieldProps) {
   const placeSearch = usePlaceSearch();
+  const { popover, reduced } = useMotionSystem();
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
   const [geoBusy, setGeoBusy] = useState(false);
@@ -158,7 +161,7 @@ export default function PlaceSearchField({
           }
           placeholder={placeholder}
           autoComplete="off"
-          className="border-0 bg-transparent p-0 h-auto text-[13.5px] font-medium placeholder:text-muted-foreground/50 focus-visible:ring-0 focus-visible:border-0"
+           className="border-0 bg-transparent p-0 h-auto text-base font-medium placeholder:text-muted-foreground/50 focus-visible:ring-0 focus-visible:border-0 sm:text-[13.5px]"
         />
       </div>
 
@@ -170,7 +173,7 @@ export default function PlaceSearchField({
             onClick={handleClear}
             aria-label={`Remove ${label}`}
             title={`Remove ${label}`}
-            className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -186,11 +189,10 @@ export default function PlaceSearchField({
                 ? `Done placing ${label} on the map`
                 : `Place ${label} on the map`
             }
-            className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
-              pinActive
+            className={`flex h-10 w-10 items-center justify-center rounded-md transition-colors ${pinActive
                 ? "bg-primary/15 text-primary"
                 : "text-muted-foreground/60 hover:bg-secondary hover:text-foreground"
-            }`}
+              }`}
           >
             <Crosshair className="h-3.5 w-3.5" />
           </button>
@@ -198,64 +200,72 @@ export default function PlaceSearchField({
         {icon}
       </div>
 
-      {(placeSearch.status !== 'idle' ||
-        (variant === 'from' && (focused || geoBusy || geoError))) && (
-        <div className="absolute left-0 right-0 top-full z-30 mt-2 rounded-xl border border-border bg-popover p-0 overflow-hidden shadow-2xl">
-          {variant === "from" && (
-            <button
-              type="button"
-              onClick={handleUseCurrentLocation}
-              disabled={geoBusy}
-              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-secondary/70 transition-colors border-b border-border disabled:opacity-60"
+      <AnimatePresence>
+        {(placeSearch.status !== 'idle' ||
+          (variant === 'from' && (focused || geoBusy || geoError))) && (
+            <motion.div
+              initial={reduced ? false : "hidden"}
+              animate={reduced ? undefined : "visible"}
+              exit={reduced ? undefined : "exit"}
+              variants={popover}
+              className="absolute left-0 right-0 top-full z-30 mt-2 rounded-xl border border-border bg-popover p-0 overflow-hidden shadow-2xl"
             >
-              <LocateFixed className="h-3.5 w-3.5 text-primary shrink-0" />
-              <span className="block text-[13px] font-semibold text-foreground">
-                {geoBusy ? "Getting your location…" : "Use my current location"}
-              </span>
-            </button>
+              {variant === "from" && (
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  disabled={geoBusy}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-secondary/70 transition-colors border-b border-border disabled:opacity-60"
+                >
+                  <LocateFixed className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="block text-[13px] font-semibold text-foreground">
+                    {geoBusy ? "Getting your location…" : "Use my current location"}
+                  </span>
+                </button>
+              )}
+              {geoError && (
+                <div className="px-4 py-3 text-[12px] text-destructive border-b border-border">
+                  {geoError}
+                </div>
+              )}
+              {placeSearch.status === 'loading' && (
+                <div className="px-4 py-3 text-[12px] text-muted-foreground">
+                  Searching locations…
+                </div>
+              )}
+              {placeSearch.status === 'empty' && (
+                <div className="px-4 py-3 text-[12px] text-muted-foreground">
+                  No locations found
+                </div>
+              )}
+              {placeSearch.status === 'error' && (
+                <div className="px-4 py-3 text-[12px] text-destructive">
+                  {placeSearch.error ?? 'Could not search locations right now.'}
+                </div>
+              )}
+              {placeSearch.status === 'success' && (
+                <ul className="max-h-64 overflow-y-auto py-1">
+                  {placeSearch.results.map((place) => (
+                    <li key={place.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPlace(place)}
+                        className="w-full px-4 py-2.5 text-left hover:bg-secondary/70 transition-colors"
+                      >
+                        <span className="block text-[13px] font-semibold text-foreground">
+                          {place.name}
+                        </span>
+                        <span className="block text-[11.5px] text-muted-foreground truncate">
+                          {place.displayName}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </motion.div>
           )}
-          {geoError && (
-            <div className="px-4 py-3 text-[12px] text-destructive border-b border-border">
-              {geoError}
-            </div>
-          )}
-          {placeSearch.status === 'loading' && (
-            <div className="px-4 py-3 text-[12px] text-muted-foreground">
-              Searching locations…
-            </div>
-          )}
-          {placeSearch.status === 'empty' && (
-            <div className="px-4 py-3 text-[12px] text-muted-foreground">
-              No locations found
-            </div>
-          )}
-          {placeSearch.status === 'error' && (
-            <div className="px-4 py-3 text-[12px] text-destructive">
-              {placeSearch.error ?? 'Could not search locations right now.'}
-            </div>
-          )}
-          {placeSearch.status === 'success' && (
-            <ul className="max-h-64 overflow-y-auto py-1">
-              {placeSearch.results.map((place) => (
-                <li key={place.id}>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectPlace(place)}
-                    className="w-full px-4 py-2.5 text-left hover:bg-secondary/70 transition-colors"
-                  >
-                    <span className="block text-[13px] font-semibold text-foreground">
-                      {place.name}
-                    </span>
-                    <span className="block text-[11.5px] text-muted-foreground truncate">
-                      {place.displayName}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      </AnimatePresence>
     </div>
   );
 }

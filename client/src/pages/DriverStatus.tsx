@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { MotionPage } from "@/motion/MotionPage";
+import { AccountSwitcher } from "@/components/AccountSwitcher";
 import {
   fetchMyDriverApplication,
   type DriverApplication,
@@ -87,36 +89,53 @@ export default function DriverStatus() {
 
   if (loading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-background">
+      <MotionPage className="flex min-h-dvh items-center justify-center bg-background">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary" />
-      </div>
+      </MotionPage>
     );
   }
 
-  if (!app) return null;
+  if (!app) {
+    return (
+      <MotionPage className="flex min-h-dvh items-center justify-center bg-background px-4">
+        <div className="w-full max-w-md rounded-2xl border border-destructive/20 bg-destructive/10 p-6 text-center">
+          <p className="text-[14px] font-semibold text-destructive">Could not load your application</p>
+          <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">{error ?? "Try again in a moment."}</p>
+          <Button className="mt-5" variant="outline" onClick={() => window.location.reload()}>
+            Try again
+          </Button>
+        </div>
+      </MotionPage>
+    );
+  }
 
   const meta = statusMeta[app.status];
   const Icon = meta.icon;
   const uploaded = app.documents ?? [];
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
-      <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-border px-6 md:px-10">
-        <div className="flex items-center gap-3">
+    <MotionPage className="flex min-h-dvh flex-col bg-background">
+      <header className="flex min-h-[64px] shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] sm:h-[64px] sm:flex-nowrap sm:px-6 sm:py-0 sm:pt-0 md:px-10">
+        <div className="flex min-w-0 items-center gap-3">
           <Logo />
           <Separator className="h-5 data-horizontal:h-5 data-horizontal:w-px" />
           <span className="text-[13px] font-medium text-muted-foreground">
             Driver application
           </span>
         </div>
-        <Link to="/dashboard">
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
-            Back to passenger app
-          </Button>
-        </Link>
+        <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
+          <AccountSwitcher compact placement="bottom">
+            <span />
+          </AccountSwitcher>
+          <Link to="/dashboard" className="w-auto">
+            <Button variant="ghost" size="sm" className="w-auto px-2 text-[11px] text-muted-foreground sm:px-3 sm:text-[12px]">
+              Back to passenger app
+            </Button>
+          </Link>
+        </div>
       </header>
 
-      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-8">
+      <main className="mx-auto w-full min-w-0 max-w-2xl flex-1 px-6 py-8">
         <div className="mb-6 text-center">
           <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/15">
             <Icon className="h-7 w-7 text-primary" />
@@ -124,7 +143,7 @@ export default function DriverStatus() {
           <h1 className="font-serif text-[1.75rem] font-bold tracking-tight text-foreground">
             Application submitted
           </h1>
-          <div className="mt-3 flex items-center justify-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
             <Badge variant="outline" className={meta.badge}>
               {meta.label}
             </Badge>
@@ -313,6 +332,6 @@ export default function DriverStatus() {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </MotionPage>
   );
 }

@@ -156,7 +156,7 @@ export default function AdminLogin() {
               Go to the passenger or driver portal instead.
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Link
               to="/login"
               className="shrink-0 whitespace-nowrap font-semibold text-primary hover:text-drio-accent-hover transition-colors"

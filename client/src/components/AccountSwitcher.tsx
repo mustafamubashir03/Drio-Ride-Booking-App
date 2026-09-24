@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import { fetchMyDriverApplication } from "@/lib/driver-api";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { AnimatePresence, motion } from "motion/react";
+import { useMotionSystem } from "@/motion/use-motion";
 import {
   ChevronDown,
   LogOut,
@@ -62,8 +65,12 @@ function getDriverCapability(app: { status: string } | null): DriverCapability {
 
 export function AccountSwitcher({
   children,
+  placement = "top",
+  compact = false,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
+  placement?: "top" | "bottom";
+  compact?: boolean;
 }) {
   const navigate = useNavigate();
   const { data: session, isPending } = authClient.useSession();
@@ -73,6 +80,7 @@ export function AccountSwitcher({
   const [checking, setChecking] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { popover, reduced } = useMotionSystem();
 
   useEffect(() => {
     let cancelled = false;
@@ -118,13 +126,36 @@ export function AccountSwitcher({
     };
   }, [session, isPending]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!dropdownRef.current?.contains(event.target as Node)) setIsOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
   const sessionUser = (session as unknown as {
     user?: { role?: string };
   } | null)?.user;
   const isAdmin = sessionUser?.role === "admin";
 
   if (isPending || checking) {
-    return <>{children}</>;
+    return compact ? (
+      <Button variant="ghost" size="sm" className="h-11 w-11 p-0" disabled aria-label="Switch account">
+        <UserIcon className="h-4 w-4" />
+        <span className="sr-only">Switch account</span>
+      </Button>
+    ) : (
+      <>{children}</>
+    )
   }
 
   // Build available contexts
@@ -166,28 +197,40 @@ export function AccountSwitcher({
       <Button
         variant="ghost"
         size="sm"
-        className="gap-1 h-8"
+        className={compact ? "h-11 w-11 p-0" : "gap-1 h-8"}
+        aria-label={compact ? "Switch account" : undefined}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
         onClick={() => setIsOpen(!isOpen)}
       >
         <UserIcon className="h-4 w-4" />
-        <span className="text-[13px] font-medium">Switch account</span>
-        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+        {compact ? null : <span className="text-[13px] font-medium">Switch account</span>}
+        {compact ? null : <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} />}
       </Button>
 
-      {isOpen && (
-        <div className="absolute left-0 bottom-full mb-1 z-50 min-w-[14rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={reduced ? false : "hidden"}
+            animate={reduced ? undefined : "visible"}
+            exit={reduced ? undefined : "exit"}
+            variants={popover}
+            role="menu"
+            className={`absolute z-50 min-w-[14rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md ${placement === "bottom" ? "right-0 top-full mt-1 max-w-[calc(100vw-2rem)]" : "left-0 bottom-full mb-1"}`}
+          >
           <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Switch context
           </div>
           <hr className="my-1 border-border" />
           {availableContexts.map((ctx) => (
-            <button
+            <Button
               key={ctx.id}
+              variant="ghost"
+              className="w-full justify-start gap-2 rounded-sm px-2 py-1.5 text-sm"
               onClick={() => {
                 navigate(ctx.destination);
                 setIsOpen(false);
               }}
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left transition-colors hover:bg-accent hover:text-accent-foreground"
             >
               <ctx.icon className="h-4 w-4" />
               <span className="flex-1 text-left">
@@ -195,14 +238,14 @@ export function AccountSwitcher({
                 {ctx.id === "driver" && (
                   <>
                     {driverCapability?.status === "pending" && (
-                      <span className="ml-2 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-500">
+                      <Badge variant="secondary" className="ml-2 text-[9px]">
                         Pending
-                      </span>
+                      </Badge>
                     )}
                     {driverCapability?.status === "rejected" && (
-                      <span className="ml-2 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[9px] font-semibold text-destructive">
+                      <Badge variant="destructive" className="ml-2 text-[9px]">
                         Rejected
-                      </span>
+                      </Badge>
                     )}
                     {driverCapability?.status === "approved" && (
                       <CheckCircle2 className="ml-2 h-3.5 w-3.5 text-drio-success" />
@@ -210,10 +253,12 @@ export function AccountSwitcher({
                   </>
                 )}
               </span>
-            </button>
+            </Button>
           ))}
           <hr className="my-1 border-border" />
-          <button
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive"
             onClick={async () => {
               setIsOpen(false);
               await authClient.signOut({
@@ -221,13 +266,13 @@ export function AccountSwitcher({
                 callbackURL: "/login",
               });
             }}
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive transition-colors hover:bg-accent hover:text-destructive"
           >
             <LogOut className="h-4 w-4" />
             <span>Sign out</span>
-          </button>
-        </div>
-      )}
+          </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

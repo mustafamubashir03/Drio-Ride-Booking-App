@@ -1,10 +1,16 @@
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Banknote, Car, Home, LogOut, Navigation, User as UserIcon } from "lucide-react";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
 import { cn } from "@/lib/utils";
+import { motion } from "motion/react";
+import { useMotionSystem } from "@/motion/use-motion";
+import { useDriverSocket } from "@/hooks/use-driver-socket";
+import { IncomingRideRequest } from "@/components/driver/IncomingRideRequest";
+import { confirmBooking, fetchDriverAvailability } from "@/lib/driver-api";
 
 const navItems: Array<{
   to: string;
@@ -59,21 +65,140 @@ function pageTitleFor(pathname: string) {
   return TITLES[key] ?? "Driver Portal";
 }
 
+interface IncomingRideRequestData {
+  rideId: string;
+  pickup: string;
+  destination: string;
+  fare: number;
+  distance?: number;
+  passengerName?: string;
+  expiresAt: number;
+}
+
+export type DriverDashboardContext = {
+  connected: boolean;
+  connect: () => void;
+  disconnect: () => void;
+  emitLocation: (location: {
+    driverId: string;
+    latitude: number;
+    longitude: number;
+    accuracy?: number | null;
+    heading?: number | null;
+    speed?: number | null;
+    timestamp: number;
+  }) => void;
+  /** Incremented whenever the driver accepts a ride mid-session so active readers refetch. */
+  rideRefreshKey: number;
+};
+
 export default function DriverLayout() {
+  const { reduced } = useMotionSystem();
   const { data: session } = authClient.useSession();
   const user = (session as unknown as {
     user?: { name?: string; email?: string };
   })?.user;
+  const driverId = (session as unknown as { user?: { id?: string } })?.user?.id;
   const location = useLocation();
+
+  const [incomingRide, setIncomingRide] = useState<IncomingRideRequestData | null>(null);
+  const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
+  const [rideRefreshKey, setRideRefreshKey] = useState(0);
+
+  const handleNewRideNotification = useCallback(
+    (data: {
+      rideId: string;
+      rideInfo: { pickup: string; destination: string; fare: number; distance?: number; passengerName?: string };
+      timeStamps: string;
+    }) => {
+      const expiresAt = Date.now() + 15000; // 15 seconds from now
+      setIncomingRide({
+        rideId: data.rideId,
+        pickup: data.rideInfo.pickup,
+        destination: data.rideInfo.destination,
+        fare: data.rideInfo.fare,
+        distance: data.rideInfo.distance,
+        passengerName: data.rideInfo.passengerName,
+        expiresAt,
+      });
+    },
+    []
+  );
+
+  const handleRemoveRideNotification = useCallback((rideId: string) => {
+    setIncomingRide((cur) => (cur && cur.rideId === rideId ? null : cur));
+  }, []);
+
+  const handleRideStatusUpdate = useCallback(
+    (data: { rideId: string; status: string }) => {
+      // Re-pull the driver's active ride when the ride moves to a terminal
+      // state (cancelled/completed), so a stale live-trip screen doesn't linger
+      // after the passenger cancels or the sweep expires the no-driver search.
+      if (data.status === "cancelled" || data.status === "completed") {
+        setRideRefreshKey((k) => k + 1);
+        setIncomingRide((cur) => (cur && cur.rideId === data.rideId ? null : cur));
+      }
+    },
+    []
+  );
+
+  const { connected, connect, disconnect, emitLocation } = useDriverSocket(
+    driverId,
+    handleNewRideNotification,
+    handleRemoveRideNotification,
+    handleRideStatusUpdate
+  );
+
+  const handleAcceptRide = useCallback(async (rideId: string) => {
+    setAcceptingRideId(rideId);
+    try {
+      await confirmBooking(rideId);
+      setIncomingRide((cur) => (cur && cur.rideId === rideId ? null : cur));
+      setRideRefreshKey((k) => k + 1);
+    } catch (e) {
+      // 409 = "Ride is no longer available" — the card is stale either way.
+      setIncomingRide((cur) => (cur && cur.rideId === rideId ? null : cur));
+      const err = e as { status?: number };
+      if (err.status !== 409) {
+        console.error("[Driver] Could not confirm ride", e);
+      }
+    } finally {
+      setAcceptingRideId(null);
+    }
+  }, []);
+
+  // If the driver's persisted status is already "online", connect automatically
+  // on mount (same connect() the toggle path uses) so a page reload doesn't
+  // leave the driver with no live socket.
+  useEffect(() => {
+    void fetchDriverAvailability()
+      .then((value) => {
+        if (value.status === "online") connect();
+      })
+      .catch(() => {
+        // ignore — DriverHome surfaces availability errors; this is only the reconnect trigger.
+      });
+    // run once on mount; explicit toggling handles reconnect after that
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-dismiss incoming ride request after 15 seconds
+  useEffect(() => {
+    if (!incomingRide) return;
+    const timer = setTimeout(() => {
+      setIncomingRide(null);
+    }, incomingRide.expiresAt - Date.now());
+    return () => clearTimeout(timer);
+  }, [incomingRide]);
 
   const handleSignOut = async () => {
     await authClient.signOut({ disableRedirect: false, callbackURL: "/login" });
   };
 
   return (
-    <div className="flex min-h-dvh bg-background">
+    <div className="flex h-dvh min-h-0 overflow-hidden bg-background">
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-20 flex w-[220px] flex-col border-r bg-sidebar">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-[220px] flex-col border-r bg-sidebar lg:flex">
         <div className="flex h-[64px] shrink-0 items-center px-5">
           <Logo />
         </div>
@@ -116,7 +241,14 @@ export default function DriverLayout() {
                     </span>
                     {item.label}
                     {isActive && (
-                      <span className={cn("ml-auto h-1.5 w-1.5 rounded-full", accent.ident)} />
+                      <motion.span
+                        layoutId="driver-nav-active"
+                        className={cn("ml-auto h-1.5 w-1.5 rounded-full", accent.ident)}
+                        transition={{
+                          duration: reduced ? 0 : 0.18,
+                          ease: "easeOut",
+                        }}
+                      />
                     )}
                   </>
                 )}
@@ -164,8 +296,8 @@ export default function DriverLayout() {
       </aside>
 
       {/* Main */}
-      <div className="ml-[220px] flex flex-1 flex-col min-h-dvh">
-        <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-border px-8">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col lg:ml-[220px]">
+        <header className="hidden h-[64px] shrink-0 items-center justify-between border-b border-border px-8 lg:flex">
           <h1 className="font-serif text-[20px] font-bold tracking-tight text-foreground leading-tight">
             {pageTitleFor(location.pathname)}
           </h1>
@@ -174,10 +306,107 @@ export default function DriverLayout() {
           </span>
         </header>
 
-        <main className="flex flex-1 flex-col overflow-hidden">
-          <Outlet />
+        {/* Mobile header */}
+        <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
+              <Logo className="!text-[1rem]" />
+            </span>
+            <h1 className="truncate text-[14px] font-semibold text-foreground">
+              {pageTitleFor(location.pathname)}
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <AccountSwitcher compact placement="bottom">
+              <span />
+            </AccountSwitcher>
+            <span className="rounded-full bg-drio-success/15 px-2.5 py-1 text-[10px] font-semibold text-drio-success">
+              ● Driver
+            </span>
+          </div>
+        </header>
+
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(60px+env(safe-area-inset-bottom))] lg:pb-0">
+          <Outlet
+            context={
+              { connected, connect, disconnect, emitLocation, rideRefreshKey } satisfies DriverDashboardContext
+            }
+          />
         </main>
+
+        {/* Mobile bottom nav */}
+        <nav
+          className="fixed inset-x-0 bottom-0 z-40 w-screen lg:hidden"
+          aria-label="Driver navigation"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+          {/* Blur backdrop */}
+          <div className="absolute inset-0 bg-sidebar/90 backdrop-blur-xl border-t border-border" />
+
+          <div className="relative flex h-[60px] items-stretch">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const accent = navAccentStyles[item.accent];
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className="relative flex flex-1 flex-col items-center justify-center gap-[3px] transition-all duration-150 active:scale-95"
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && (
+                        <motion.span
+                          layoutId="driver-nav-pill"
+                          className={cn("absolute inset-x-[20%] top-[6px] h-[32px] rounded-xl", {
+                            "bg-primary/10": item.accent === "primary",
+                            "bg-drio-blue/10": item.accent === "blue",
+                            "bg-drio-success/10": item.accent === "green",
+                            "bg-drio-violet/10": item.accent === "violet",
+                          })}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
+                        />
+                      )}
+                      <span className="relative z-10 flex items-center justify-center">
+                        <Icon
+                          className={cn("h-[18px] w-[18px] transition-colors duration-150", {
+                            [accent.chip.replace("bg-", "text-").split(" ")[0] + " " + accent.button.split(" ")[1]]: isActive,
+                            "text-muted-foreground": !isActive,
+                          })}
+                        />
+                      </span>
+                      <span
+                        className={cn(
+                          "relative z-10 text-[10px] font-semibold tracking-wide leading-none transition-colors duration-150",
+                          isActive ? accent.button.split(" ")[1] : "text-muted-foreground/70"
+                        )}
+                      >
+                        {item.label}
+                      </span>
+                    </>
+                  )}
+                </NavLink>
+              );
+            })}
+          </div>
+        </nav>
       </div>
+
+      {incomingRide && (
+        <IncomingRideRequest
+          rideId={incomingRide.rideId}
+          pickup={incomingRide.pickup}
+          destination={incomingRide.destination}
+          fare={incomingRide.fare}
+          distance={incomingRide.distance}
+          passengerName={incomingRide.passengerName}
+          expiresAt={incomingRide.expiresAt}
+          onDismiss={() => setIncomingRide(null)}
+          onAccept={handleAcceptRide}
+          accepting={acceptingRideId === incomingRide.rideId}
+        />
+      )}
     </div>
   );
 }

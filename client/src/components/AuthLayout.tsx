@@ -10,7 +10,7 @@ type AuthLayoutProps = {
 
 export default function AuthLayout({ children, title, subtitle, badge }: AuthLayoutProps) {
   return (
-    <div className="flex min-h-dvh bg-background">
+    <div className="flex min-h-dvh bg-background pt-[env(safe-area-inset-top)] lg:pt-0">
       {/* ── Left branding panel ─────────────────────────────────── */}
       <div
         className="relative hidden w-[44%] overflow-hidden lg:flex lg:flex-col bg-drio-deep"
@@ -67,11 +67,11 @@ export default function AuthLayout({ children, title, subtitle, badge }: AuthLay
       </div>
 
       {/* ── Right form panel ───────────────────────────────────── */}
-      <div className="relative flex w-full items-center justify-center px-8 py-12 lg:w-[56%]">
+      <div className="relative flex w-full items-start justify-center px-6 py-8 sm:items-center sm:px-8 sm:py-12 lg:w-[56%]">
         {/* Mobile glows */}
         <div className="pointer-events-none absolute inset-0 lg:hidden">
-          <div className="absolute -left-16 -top-16 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
-          <div className="absolute -bottom-20 -right-10 h-64 w-64 rounded-full bg-primary/8 blur-3xl" />
+          <div className="absolute left-4 top-4 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+          <div className="absolute bottom-4 right-4 h-48 w-48 rounded-full bg-primary/8 blur-3xl" />
         </div>
 
         <div className="relative w-full max-w-[420px]">{children}</div>

@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Textarea } from "@/components/ui/textarea";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
+import { MotionPage } from "@/motion/MotionPage";
+import { AnimatePresence, motion } from "motion/react";
+import { motionStateProps, useMotionSystem } from "@/motion/use-motion";
 import {
   DRIVER_DOCUMENT_LABELS,
   getDriverApplicationAdminApi,
@@ -176,9 +180,6 @@ function ReviewDecisionCard({
     }
   };
 
-  const textareaClass =
-    "min-h-0 w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground transition-colors outline-none placeholder:text-muted-foreground/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 disabled:opacity-50";
-
   return (
     <Card className="border-primary/20 bg-primary/8">
       <CardContent className="pt-6">
@@ -194,30 +195,24 @@ function ReviewDecisionCard({
         </p>
 
         <div className="mt-4 grid grid-cols-2 gap-1.5 rounded-xl border border-border bg-muted/30 p-1">
-          <button
+          <Button
             type="button"
+            variant={decision === "approved" ? "default" : "ghost"}
+            className="gap-1.5 py-2 text-[13px] font-semibold"
             onClick={() => setDecision("approved")}
-            className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-[13px] font-semibold transition-colors ${
-              decision === "approved"
-                ? "bg-drio-success/15 text-drio-success"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
           >
             <CheckCircle2 className="h-4 w-4" />
             Approve
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant={decision === "rejected" ? "destructive" : "ghost"}
+            className="gap-1.5 py-2 text-[13px] font-semibold"
             onClick={() => setDecision("rejected")}
-            className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-[13px] font-semibold transition-colors ${
-              decision === "rejected"
-                ? "bg-destructive/15 text-destructive"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
           >
             <XCircle className="h-4 w-4" />
             Reject
-          </button>
+          </Button>
         </div>
 
         <div className="mt-4 space-y-4">
@@ -230,13 +225,12 @@ function ReviewDecisionCard({
                 Admin note{" "}
                 <span className="text-muted-foreground/60">(optional)</span>
               </label>
-              <textarea
+              <Textarea
                 id="review-admin-note"
                 rows={2}
                 value={adminNote}
                 onChange={(e) => setAdminNote(e.target.value)}
                 placeholder="Visible to the applicant on their status page."
-                className={textareaClass}
               />
             </div>
           ) : (
@@ -248,13 +242,12 @@ function ReviewDecisionCard({
                 >
                   Rejection reason <span className="text-destructive">*</span>
                 </label>
-                <textarea
+                <Textarea
                   id="review-rejection-reason"
                   rows={2}
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
                   placeholder="Why wasn't this application approved?"
-                  className={textareaClass}
                 />
               </div>
               <div>
@@ -265,13 +258,12 @@ function ReviewDecisionCard({
                   Admin note{" "}
                   <span className="text-muted-foreground/60">(optional)</span>
                 </label>
-                <textarea
+                <Textarea
                   id="review-reject-note"
                   rows={2}
                   value={adminNote}
                   onChange={(e) => setAdminNote(e.target.value)}
                   placeholder="Private note for the review record."
-                  className={textareaClass}
                 />
               </div>
             </>
@@ -291,7 +283,7 @@ function ReviewDecisionCard({
           <Button
             type="button"
             variant={decision === "approved" ? "default" : "destructive"}
-            className="flex-1 font-semibold"
+            className="flex-1 font-semibold hover:scale-[1.01]"
             disabled={submitting}
             onClick={handleSubmit}
           >
@@ -308,6 +300,7 @@ function ReviewDecisionCard({
 
 export default function AdminDashboard() {
   const { data: session } = authClient.useSession();
+  const { page, stagger, reduced } = useMotionSystem();
   const admin = (session as unknown as {
     user?: { name?: string; email?: string };
   })?.user;
@@ -424,9 +417,9 @@ export default function AdminDashboard() {
   const selectedMeta = selected ? statusMeta[selected.status] : null;
 
   return (
-    <div className="flex min-h-dvh bg-background">
+    <MotionPage className="flex min-h-dvh bg-background">
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-20 flex w-[220px] flex-col border-r bg-sidebar">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-[220px] flex-col border-r bg-sidebar lg:flex">
         <div className="flex h-[64px] shrink-0 items-center px-5">
           <Logo />
         </div>
@@ -513,8 +506,8 @@ export default function AdminDashboard() {
       </aside>
 
       {/* Main */}
-      <div className="ml-[220px] flex-1 flex flex-col min-h-dvh">
-        <header className="flex h-[64px] shrink-0 items-center justify-between border-b border-border px-8">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col lg:min-h-dvh lg:ml-[220px]">
+        <header className="hidden h-[64px] shrink-0 items-center justify-between border-b border-border px-8 lg:flex">
           <div>
             <h1 className="font-serif text-[20px] font-bold tracking-tight text-foreground leading-tight">
               Admin Dashboard
@@ -530,7 +523,25 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6">
+        {/* Mobile header */}
+        <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
+          <h1 className="truncate text-[14px] font-semibold text-foreground">
+            Admin Dashboard
+          </h1>
+          <div className="flex items-center gap-2">
+            <AccountSwitcher compact placement="bottom">
+              <span />
+            </AccountSwitcher>
+            <Badge
+              variant="outline"
+              className="border-amber-500/25 bg-amber-500/15 text-amber-500"
+            >
+              {overview ? `${overview.pending} pending` : "Pending…"}
+            </Badge>
+          </div>
+        </header>
+
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
           {/* Overview */}
           <section className="mb-6">
             <div className="mb-3 flex items-center justify-between">
@@ -551,32 +562,45 @@ export default function AdminDashboard() {
                 Refresh
               </Button>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard
-                label="Total applications"
-                value={overview?.total}
-                icon={Files}
-                tone="default"
-              />
-              <MetricCard
-                label="Pending review"
-                value={overview?.pending}
-                icon={Clock3}
-                tone="pending"
-              />
-              <MetricCard
-                label="Approved"
-                value={overview?.approved}
-                icon={CheckCircle2}
-                tone="approved"
-              />
-              <MetricCard
-                label="Rejected"
-                value={overview?.rejected}
-                icon={XCircle}
-                tone="rejected"
-              />
-            </div>
+            <motion.div
+              className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+              variants={stagger.container}
+              initial={reduced ? false : "hidden"}
+              animate={reduced ? undefined : "visible"}
+            >
+              <motion.div key="total" variants={stagger.item}>
+                <MetricCard
+                  label="Total applications"
+                  value={overview?.total}
+                  icon={Files}
+                  tone="default"
+                />
+              </motion.div>
+              <motion.div key="pending" variants={stagger.item}>
+                <MetricCard
+                  label="Pending review"
+                  value={overview?.pending}
+                  icon={Clock3}
+                  tone="pending"
+                />
+              </motion.div>
+              <motion.div key="approved" variants={stagger.item}>
+                <MetricCard
+                  label="Approved"
+                  value={overview?.approved}
+                  icon={CheckCircle2}
+                  tone="approved"
+                />
+              </motion.div>
+              <motion.div key="rejected" variants={stagger.item}>
+                <MetricCard
+                  label="Rejected"
+                  value={overview?.rejected}
+                  icon={XCircle}
+                  tone="rejected"
+                />
+              </motion.div>
+            </motion.div>
             {overviewError && (
               <p className="mt-3 text-[12px] font-medium text-destructive">
                 {overviewError}
@@ -588,8 +612,8 @@ export default function AdminDashboard() {
           <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
             {/* List */}
             <Card className="xl:sticky xl:top-0">
-              <div className="flex items-start justify-between gap-2 px-5 pt-5">
-                <div>
+              <div className="flex flex-col gap-3 px-5 pt-5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+                <div className="min-w-0">
                   <h2 className="text-[15px] font-semibold text-foreground">
                     Applications
                   </h2>
@@ -600,7 +624,7 @@ export default function AdminDashboard() {
                       : ""}
                   </p>
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-1.5">
+                <div className="flex w-full min-w-0 flex-wrap gap-1.5 sm:w-auto sm:shrink-0">
                   {filterTabs.map((tab) => {
                     const isActive = filter === tab.id;
                     const count = filterCount(tab.id);
@@ -634,112 +658,145 @@ export default function AdminDashboard() {
               </div>
 
               <div className="mt-4 px-3 pb-3">
-                {listLoading && applications.length === 0 ? (
-                  <div className="flex h-40 items-center justify-center">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : listError ? (
-                  <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-destructive/30 px-4 text-center">
-                    <p className="text-[13px] font-medium text-destructive">
-                      Could not load applications
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void loadList()}
+                <AnimatePresence mode="wait">
+                  {listLoading && applications.length === 0 ? (
+                    <motion.div
+                      {...motionStateProps({ variants: page, reduced })}
+                      key="loading"
+                      className="flex h-40 items-center justify-center"
                     >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Try again
-                    </Button>
-                  </div>
-                ) : applications.length === 0 ? (
-                  <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 text-center">
-                    <Inbox className="h-6 w-6 text-muted-foreground/60" />
-                    <p className="text-[13px] font-medium text-foreground">
-                      No{" "}
-                      {filter === "all" ? "" : statusMeta[filter].label.toLowerCase()}{" "}
-                      applications
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
-                    {applications.map((application) => {
-                      const isSelected = selectedId === application._id;
-                      return (
-                        <button
-                          key={application._id}
-                          type="button"
-                          onClick={() => setSelectedId(application._id)}
-                          className={`flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors ${
-                            isSelected ? "bg-primary/8" : "hover:bg-secondary/50"
-                          }`}
-                        >
-                          <Avatar size="sm" className="shrink-0">
-                            <AvatarFallback className="bg-primary/20 text-[10px] font-bold text-primary">
-                              <Initials
-                                name={application.user?.name ?? undefined}
-                                email={application.user?.email ?? undefined}
-                              />
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-[13px] font-semibold text-foreground">
-                              {application.user?.name ??
-                                application.user?.email ??
-                                "Applicant"}
-                            </p>
-                            <p className="truncate text-[12px] text-muted-foreground">
-                              {application.user?.email ?? "—"}
-                            </p>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <Badge
-                              variant="outline"
-                              className={statusMeta[application.status].badge}
-                            >
-                              {statusMeta[application.status].label}
-                            </Badge>
-                            <p className="mt-1 text-[11px] text-muted-foreground">
-                              {formatDate(application.submittedAt)}
-                            </p>
-                          </div>
-                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </motion.div>
+                  ) : listError ? (
+                    <motion.div
+                      {...motionStateProps({ variants: page, reduced })}
+                      key="error"
+                      className="flex h-40 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-destructive/30 px-4 text-center"
+                    >
+                      <p className="text-[13px] font-medium text-destructive">
+                        Could not load applications
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void loadList()}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Try again
+                      </Button>
+                    </motion.div>
+                  ) : applications.length === 0 ? (
+                    <motion.div
+                      {...motionStateProps({ variants: page, reduced })}
+                      key="empty"
+                      className="flex h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 text-center"
+                    >
+                      <Inbox className="h-6 w-6 text-muted-foreground/60" />
+                      <p className="text-[13px] font-medium text-foreground">
+                        No{" "}
+                        {filter === "all" ? "" : statusMeta[filter].label.toLowerCase()}{" "}
+                        applications
+                      </p>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      {...motionStateProps({ variants: page, reduced })}
+                      key="list"
+                      className="divide-y divide-border overflow-hidden rounded-xl border border-border"
+                    >
+                      {applications.map((application) => {
+                        const isSelected = selectedId === application._id;
+                        return (
+                          <button
+                            key={application._id}
+                            type="button"
+                            onClick={() => setSelectedId(application._id)}
+                            className={`flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors ${
+                              isSelected ? "bg-primary/8" : "hover:bg-secondary/50"
+                            }`}
+                          >
+                            <Avatar size="sm" className="shrink-0">
+                              <AvatarFallback className="bg-primary/20 text-[10px] font-bold text-primary">
+                                <Initials
+                                  name={application.user?.name ?? undefined}
+                                  email={application.user?.email ?? undefined}
+                                />
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[13px] font-semibold text-foreground">
+                                {application.user?.name ??
+                                  application.user?.email ??
+                                  "Applicant"}
+                              </p>
+                              <p className="truncate text-[12px] text-muted-foreground">
+                                {application.user?.email ?? "—"}
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <Badge
+                                variant="outline"
+                                className={statusMeta[application.status].badge}
+                              >
+                                {statusMeta[application.status].label}
+                              </Badge>
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                {formatDate(application.submittedAt)}
+                              </p>
+                            </div>
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                          </button>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </Card>
 
             {/* Detail */}
             <div className="min-w-0">
-              {!selectedId ? (
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center px-6 py-16 text-center">
-                    <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-                      <UserIcon className="h-7 w-7 text-primary" />
-                    </span>
-                    <p className="text-[15px] font-semibold text-foreground">
-                      Select an application
-                    </p>
-                    <p className="mt-1 max-w-xs text-[13px] leading-relaxed text-muted-foreground">
-                      Choose an application from the list to review the
-                      applicant, view their documents and approve or reject.
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : detailLoading ? (
-                <Card>
-                  <CardContent className="flex h-64 items-center justify-center">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                  </CardContent>
-                </Card>
-              ) : detailError ? (
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                    <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
-                      <FileText className="h-6 w-6 text-destructive" />
+              <AnimatePresence mode="wait">
+                {!selectedId ? (
+                  <motion.div
+                    {...motionStateProps({ variants: page, reduced })}
+                    key="empty"
+                  >
+                    <Card>
+                      <CardContent className="flex flex-col items-center justify-center px-6 py-16 text-center">
+                        <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                          <UserIcon className="h-7 w-7 text-primary" />
+                        </span>
+                        <p className="text-[15px] font-semibold text-foreground">
+                          Select an application
+                        </p>
+                        <p className="mt-1 max-w-xs text-[13px] leading-relaxed text-muted-foreground">
+                          Choose an application from the list to review the
+                          applicant, view their documents and approve or reject.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ) : detailLoading ? (
+                  <motion.div
+                    {...motionStateProps({ variants: page, reduced })}
+                    key="loading"
+                  >
+                    <Card>
+                      <CardContent className="flex h-64 items-center justify-center">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ) : detailError ? (
+                  <motion.div
+                    {...motionStateProps({ variants: page, reduced })}
+                    key="error"
+                  >
+                    <Card>
+                      <CardContent className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                        <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+                          <FileText className="h-6 w-6 text-destructive" />
                     </span>
                     <p className="text-[14px] font-semibold text-destructive">
                       Could not load this application
@@ -756,9 +813,14 @@ export default function AdminDashboard() {
                       Try again
                     </Button>
                   </CardContent>
-                </Card>
-              ) : selected ? (
-                <div className="space-y-4">
+                    </Card>
+                  </motion.div>
+                ) : selected ? (
+                <motion.div
+                  {...motionStateProps({ variants: page, reduced })}
+                  key="detail"
+                  className="space-y-4"
+                >
                   {/* Applicant */}
                   <Card>
                     <CardContent className="pt-6">
@@ -941,12 +1003,13 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                   )}
-                </div>
-              ) : null}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </div>
           </section>
         </main>
       </div>
-    </div>
+    </MotionPage>
   );
 }

@@ -1,4 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { AnimatePresence } from "motion/react";
 import PublicOnlyRoute from "./components/PublicOnlyRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RequireDriverRole from "./components/RequireDriverRole";
@@ -18,10 +19,19 @@ import DriverEarnings from "./pages/driver/DriverEarnings";
 import DriverProfile from "./pages/driver/DriverProfile";
 import AdminDashboard from "./pages/AdminDashboard";
 
-function App() {
+function routeKeyFor(pathname: string) {
+  // Keep the driver dashboard shell mounted while navigating between its
+  // sub-pages so the app chrome (sidebar) stays put and only the content
+  // area transitions.
+  if (pathname.startsWith("/driver/dashboard")) return "/driver/dashboard";
+  return pathname;
+}
+
+function AnimatedRoutes() {
+  const location = useLocation();
   return (
-    <BrowserRouter>
-      <Routes>
+    <AnimatePresence mode="wait" initial={false}>
+      <Routes location={location} key={routeKeyFor(location.pathname)}>
         <Route
           path="/login"
           element={
@@ -94,6 +104,14 @@ function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+    </AnimatePresence>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AnimatedRoutes />
     </BrowserRouter>
   );
 }

@@ -6,6 +6,7 @@ import {
 } from "@/lib/driver-api";
 import { formatFare } from "@/lib/format";
 import { Banknote, History, TrendingUp } from "lucide-react";
+import { MotionPage } from "@/motion/MotionPage";
 
 const DEFAULT_SUMMARY: DriverEarningsSummary = {
   today: { rides: 0, total: 0 },
@@ -69,8 +70,8 @@ export default function DriverEarnings() {
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-8">
-      <div className="mx-auto max-w-3xl space-y-6">
+    <MotionPage className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto p-4 lg:p-8">
+      <div className="mx-auto w-full min-w-0 max-w-3xl space-y-6">
         {status === "error" && (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-destructive/30 bg-card px-6 py-16 text-center">
             <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
@@ -88,7 +89,16 @@ export default function DriverEarnings() {
           </div>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        {status === "loading" && (
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-card px-6 py-16 text-center">
+            <Banknote className="h-7 w-7 animate-pulse text-primary" />
+            <p className="mt-4 text-[15px] font-semibold text-foreground">Loading your earnings…</p>
+          </div>
+        )}
+
+        {status === "success" && (
+          <>
+            <div className="grid gap-4 sm:grid-cols-3">
           {cards.map((card) => {
             const Icon = card.icon;
             return (
@@ -119,7 +129,9 @@ export default function DriverEarnings() {
             complete rides and are grouped by completion date here.
           </p>
         </div>
+          </>
+        )}
       </div>
-    </div>
+    </MotionPage>
   );
 }
