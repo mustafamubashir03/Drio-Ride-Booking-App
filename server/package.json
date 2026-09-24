@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "ts-node src/server.ts",
+    "predev": "kill-port 3000",
     "dev": "nodemon src/server.ts"
   },
   "keywords": [],
@@ -11,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "axios": "^1.20.0",
     "better-auth": "^1.7.5",
     "cloudinary": "^2.11.0",
     "cors": "^2.8.6",
@@ -31,6 +33,7 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^22.14.0",
     "@types/nodemailer": "^8.0.1",
+    "kill-port": "^2.0.1",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"

@@ -12,13 +12,15 @@ import { toNodeHandler } from "better-auth/node";
 import { auth, connectDB, client } from "./lib/auth";
 import { connectMongoose } from "./lib/mongoose";
 import { seedRbac } from "./lib/rbac.seed";
-import { Server } from 'socket.io';
-import http from 'http'
-import { initSocket } from './utils/sockets/socket';
+import { connectRedis, disconnectRedis } from "./lib/redis";
+import { SEARCH_SWEEP_INTERVAL_MS } from "./config/search.config";
+import { startDriverSearchSweeper } from "./services/driver-search.service";
+import http from 'http';
+
+
 
 const app = express();
-const server = http.createServer(app)
-const io = new Server(server)
+
 
 const localhostOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
@@ -73,16 +75,57 @@ app.use(genericErrorHandler);
 
 connectDB().then(async () => {
     await connectMongoose();
+    await connectRedis();
     await seedRbac();
-    app.listen(serverConfig.PORT, () => {
+    // Periodic driver-search cycle: widens the dispatch radius as bookings
+    // age and expires any that run out of search budget (no_driver_found).
+    searchSweeper = startDriverSearchSweeper(SEARCH_SWEEP_INTERVAL_MS);
+    // Capture the http.Server so we can close it gracefully on shutdown.
+    server = app.listen(serverConfig.PORT, () => {
         logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
         logger.info(`Press Ctrl+C to stop the server.`);
     });
-    server.listen(serverConfig.SOCKET_PORT, () => {
-        logger.info(`Socket server is running on http://localhost:${serverConfig.SOCKET_PORT}`)
-    })
-    initSocket(io)
 }).catch((err) => {
     logger.error("Failed to start server", { error: (err as Error).message });
     process.exit(1);
 });
+
+let server: http.Server | undefined;
+let searchSweeper: NodeJS.Timeout | undefined;
+let shuttingDown = false;
+
+function shutdown(signal: NodeJS.Signals) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info(`Received ${signal}, shutting down gracefully...`);
+
+    const forceExit = setTimeout(() => {
+        logger.error("Graceful shutdown timed out, forcing exit.");
+        process.exit(1);
+    }, 5000);
+    forceExit.unref();
+
+    (async () => {
+        try {
+            await disconnectRedis();
+        } catch (err) {
+            logger.error("Failed to disconnect Redis during shutdown", { error: (err as Error).message });
+        }
+        if (server) {
+            server.close(() => {
+                logger.info("HTTP server closed.");
+                if (searchSweeper) clearInterval(searchSweeper);
+                clearTimeout(forceExit);
+                process.exit(0);
+            });
+        } else {
+            clearTimeout(forceExit);
+            process.exit(0);
+        }
+    })();
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+// SIGUSR2: parent (nodemon) notifies us on restart/'rs'.
+process.on('SIGUSR2', shutdown);

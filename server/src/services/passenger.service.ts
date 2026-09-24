@@ -1,6 +1,8 @@
 import logger from "../config/logger.config";
 import { createBookingRepository, listBookingsRepository } from "../repositories/booking.repository";
 import { calculateHaversineDistance } from "../utils/helpers/distance";
+import { setRidePassengerService } from "./location.service";
+import { kickoffDriverSearch } from "./driver-search.service";
 import { findNearByDriversService } from "./location.service";
 
 const BASIC_FARE = 50;
@@ -17,27 +19,58 @@ export const createBookingService = async ({
     passengerId,
     source,
     destination,
+    passengerName,
 }: {
     passengerId: string,
     source: BookingLocation,
     destination: BookingLocation,
+    passengerName?: string,
 }) => {
     try {
-        const distance = calculateHaversineDistance(source.latitude, source.longitude, destination.latitude, destination.longitude);
-        const fare = BASIC_FARE + PER_KM * distance;
+        const distance = Math.round(calculateHaversineDistance(source.latitude, source.longitude, destination.latitude, destination.longitude) * 100) / 100;
+        const fare = Math.round((BASIC_FARE + PER_KM * distance) * 100) / 100;
+        logger.info(`[BOOKING] Creating booking: passengerId=${passengerId}, source=(${source.latitude},${source.longitude}), destination=(${destination.latitude},${destination.longitude}), fare=${fare}, distance=${distance}`);
         const booking = await createBookingRepository({
             passenger: passengerId,
             source,
             destination,
             fare,
+            distance,
             status: "pending",
         })
+
+        // Map the booking → passenger in Redis so the socket-server can route
+        // realtime ride events (status, driver location) to the right room.
+        if (booking) {
+            await setRidePassengerService(booking._id.toString(), passengerId);
+        }
+
+        // Stage 0 discovery (smallest radius) runs immediately so nearby
+        // drivers are pinged without waiting for the first sweep; the search
+        // sweeper widens the radius (8→12→15 km) and expires the booking.
+        if (booking) {
+            logger.info(`[BOOKING] bookingId=${booking._id}, pickup=(${source.latitude},${source.longitude}), distance=${distance}, fare=${fare}`);
+            const rideInfo = {
+                pickup: source.displayName || source.name || "Unknown",
+                destination: destination.displayName || destination.name || "Unknown",
+                fare,
+                distance,
+                passengerName: passengerName || "Passenger",
+            };
+            const notified = await kickoffDriverSearch({
+                bookingId: booking._id.toString(),
+                longitude: source.longitude,
+                latitude: source.latitude,
+                rideInfo,
+            });
+            logger.info(`[BOOKING] Notified ${notified} drivers at stage 0 for booking ${booking._id}`);
+        }
 
         return booking;
 
     }
     catch (error) {
-        logger.error("Failed to create booking", error);
+        logger.error("[BOOKING] Failed to create booking", error);
         return null;
     }
 }

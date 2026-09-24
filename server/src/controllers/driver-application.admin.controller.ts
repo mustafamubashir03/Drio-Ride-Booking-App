@@ -21,8 +21,8 @@ export const listDriverApplicationsAdminController = async (
             limit: Number(req.query.limit) || 10,
             status:
                 req.query.status === "approved" ||
-                req.query.status === "rejected" ||
-                req.query.status === "pending"
+                    req.query.status === "rejected" ||
+                    req.query.status === "pending"
                     ? req.query.status
                     : undefined,
         });

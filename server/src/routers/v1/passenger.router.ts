@@ -1,6 +1,6 @@
 import express from 'express';
 import { requireAuth, requireRole, requirePermission } from '../../middlewares/rbac.middleware';
-import { createBookingController, listBookingsController } from '../../controllers/passenger.controller';
+import { createBookingController, listBookingsController, cancelBookingController, reviewBookingController } from '../../controllers/passenger.controller';
 
 const passengerRouter = express.Router();
 
@@ -22,6 +22,20 @@ passengerRouter.post(
     requireRole('passenger', 'admin'),
     requirePermission('booking:create'),
     createBookingController
+);
+
+passengerRouter.post(
+    '/bookings/:bookingId/cancel',
+    requireRole('passenger', 'admin'),
+    requirePermission('booking:cancel'),
+    cancelBookingController
+);
+
+passengerRouter.post(
+    '/bookings/:bookingId/review',
+    requireRole('passenger', 'admin'),
+    requirePermission('booking:review'),
+    reviewBookingController
 );
 
 export default passengerRouter;

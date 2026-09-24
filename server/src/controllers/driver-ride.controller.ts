@@ -3,6 +3,7 @@ import {
     acceptDriverRideService,
     cancelDriverRideService,
     completeDriverRideService,
+    confirmBookingService,
     getDriverActiveRideService,
     getDriverRideService,
     listDriverRidesService,
@@ -65,6 +66,22 @@ export const acceptDriverRideController = async (
         const ride = await acceptDriverRideService(
             driverIdOf(req),
             bookingIdOf(req));
+        return res.status(200).json({ success: true, ride });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const confirmDriverRideController = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    try {
+        const ride = await confirmBookingService({
+            driverId: driverIdOf(req),
+            bookingId: bookingIdOf(req),
+        });
         return res.status(200).json({ success: true, ride });
     } catch (error) {
         next(error);

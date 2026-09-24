@@ -8,6 +8,7 @@ import {
     acceptDriverRideController,
     cancelDriverRideController,
     completeDriverRideController,
+    confirmDriverRideController,
     getDriverActiveRideController,
     getDriverRideController,
     listDriverRidesController,
@@ -36,6 +37,7 @@ driverRouter.get('/rides/active', getDriverActiveRideController)
 driverRouter.get('/rides', listDriverRidesController)
 driverRouter.get('/rides/:bookingId', getDriverRideController)
 driverRouter.post('/rides/:bookingId/accept', acceptDriverRideController)
+driverRouter.post('/rides/:bookingId/confirm', confirmDriverRideController)
 driverRouter.post('/rides/:bookingId/arriving', markDriverArrivingController)
 driverRouter.post('/rides/:bookingId/arrived', markDriverArrivedController)
 driverRouter.post('/rides/:bookingId/start', startDriverRideController)

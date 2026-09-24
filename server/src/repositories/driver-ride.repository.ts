@@ -71,6 +71,12 @@ export const transitionDriverBookingRepository = async ({
     fromStatus: string;
     toStatus: string;
 }) => {
+    const set: Record<string, unknown> = { status: toStatus };
+    if (toStatus === "cancelled") {
+        set.cancelledAt = new Date();
+        set.cancelledBy = "driver";
+        set.cancellationReason = "driver_cancelled";
+    }
     return await Booking.findOneAndUpdate(
         {
             _id: new Types.ObjectId(bookingId),
@@ -78,7 +84,34 @@ export const transitionDriverBookingRepository = async ({
             status: fromStatus,
         },
         {
-            $set: { status: toStatus },
+            $set: set,
+        },
+        { new: true }
+    )
+        .populate("passenger", "name email")
+        .lean()
+        .exec();
+};
+
+export const confirmBookingRepository = async ({
+    bookingId,
+    driverId,
+}: {
+    bookingId: string;
+    driverId: string;
+}) => {
+    return await Booking.findOneAndUpdate(
+        {
+            _id: new Types.ObjectId(bookingId),
+            status: "pending",
+            driver: null,
+        },
+        {
+            $set: {
+                status: "confirmed",
+                driver: new Types.ObjectId(driverId),
+                assignedAt: new Date(),
+            },
         },
         { new: true }
     )

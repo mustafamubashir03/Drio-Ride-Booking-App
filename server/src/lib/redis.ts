@@ -10,13 +10,33 @@ const redisClient = createClient({
             return delay;
         }
     }
-})
+});
 
 redisClient.on("error", (err) => console.log("Redis Client Error", err));
+redisClient.on("connect", () => console.log("[Redis] connecting..."));
+redisClient.on("ready", () => console.log("[Redis] ready, isOpen:", redisClient.isOpen, "isReady:", redisClient.isReady));
 
 export async function connectRedis() {
     try {
+        console.log("[Redis] connectRedis() called");
         await redisClient.connect();
+        console.log("[Redis] connected, isOpen:", redisClient.isOpen, "isReady:", redisClient.isReady);
+        
+        // Phase 1: Redis ID logging
+        const info = await redisClient.info();
+        const runIdMatch = info.match(/run_id:([a-f0-9]+)/);
+        const tcpPortMatch = info.match(/tcp_port:(\d+)/);
+        const roleMatch = info.match(/role:(\w+)/);
+        const uptimeMatch = info.match(/uptime_in_seconds:(\d+)/);
+        const runId = runIdMatch ? runIdMatch[1] : 'unknown';
+        const tcpPort = tcpPortMatch ? tcpPortMatch[1] : 'unknown';
+        const role = roleMatch ? roleMatch[1] : 'unknown';
+        const uptime = uptimeMatch ? uptimeMatch[1] : '0';
+        const geoCount = await redisClient.zCard('drivers');
+        
+        logger.info("[REDIS-ID] {service:'main-api', run_id:'" + runId + "', tcp_port:" + tcpPort + ", role:'" + role + "', uptime_s:" + uptime + ", geoKey:'drivers', geoCount:" + geoCount + "}");
+        console.log("[REDIS-ID] {service:'main-api', run_id:'" + runId + "', tcp_port:" + tcpPort + ", role:'" + role + "', uptime_s:" + uptime + ", geoKey:'drivers', geoCount:" + geoCount + "}");
+        
         logger.info("Redis connected");
     } catch (error) {
         logger.error("Failed to connect Redis", error);

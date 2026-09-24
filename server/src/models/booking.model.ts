@@ -57,9 +57,32 @@ const bookingSchema = new mongoose.Schema({
         enum: [...BOOKING_STATUSES] as string[],
         default: 'pending'
     },
+    // Who ended a ride and why. `cancelledAt` seeds reload-safe presentation
+    // while `cancelledBy`/`cancellationReason` stay internal (the UI shows a
+    // friendly message, not the raw reason).
+    cancelledAt: {
+        type: Date,
+        default: null
+    },
+    cancelledBy: {
+        type: String,
+        enum: ['passenger', 'driver', 'system'],
+        default: null
+    },
+    cancellationReason: {
+        type: String,
+        default: null
+    },
+    // Optional post-ride review. `reviewedAt` is the single-write guard: it is
+    // null until the passenger submits feedback and is set atomically together
+    // with the rating/comment so duplicate submissions are impossible.
     feedback: {
         rating: Number,
-        comment: String
+        comment: String,
+        reviewedAt: {
+            type: Date,
+            default: null
+        }
     },
     distance: Number,
 

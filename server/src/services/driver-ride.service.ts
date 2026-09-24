@@ -2,11 +2,21 @@ import { Types } from "mongoose";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../utils/errors/app.error";
 import {
     assignBookingToDriverRepository,
+    confirmBookingRepository,
     findDriverActiveBookingRepository,
     findDriverBookingByIdRepository,
     listDriverBookingsRepository,
     transitionDriverBookingRepository,
 } from "../repositories/driver-ride.repository";
+import {
+    clearDriverActiveRideService,
+    deleteNotifiedDriversService,
+    deleteRidePassengerService,
+    deleteSearchStageService,
+    getNotifiedDriversService,
+    setDriverActiveRideService,
+} from "./location.service";
+import { notifyPassenger, removeRideNotification } from "./notification-bridge.service";
 
 /**
  * Driver ride lifecycle:
@@ -86,12 +96,14 @@ export const assignBookingToDriverService = async ({
         throw new ConflictError("Only pending bookings can be assigned to a driver");
     }
     if (current.driver && toObjectId(current.driver).toString() === driverId) {
+        await setDriverActiveRideService(driverId, bookingId);
         return serializeDriverRide(current);
     }
     const booking = await assignBookingToDriverRepository({ bookingId, driverId });
     if (!booking) {
         throw new ConflictError("This booking is no longer pending");
     }
+    await setDriverActiveRideService(driverId, bookingId);
     return serializeDriverRide(booking);
 };
 
@@ -152,6 +164,28 @@ const transitionDriverRideService = async ({
     if (!updated) {
         throw new ConflictError("This booking's status changed; please refresh");
     }
+
+    // Terminal statuses end the driver's live ride routing (Redis map cleared
+    // so the socket-server stops forwarding this driver's locations).
+    if (toStatus === "completed" || toStatus === "cancelled") {
+        await clearDriverActiveRideService(driverId);
+        await deleteRidePassengerService(bookingId);
+        await deleteSearchStageService(bookingId);
+    }
+
+    // Realtime notification to the passenger: the DB write above is the
+    // source of truth; this event only lets the passenger UI update without
+    // waiting for the next poll.
+    const passenger = passengerOf(updated.passenger);
+    if (passenger?._id) {
+        await notifyPassenger({
+            bookingId,
+            passengerId: passenger._id,
+            status: toStatus,
+            driverId,
+        });
+    }
+
     return serializeDriverRide(updated);
 };
 
@@ -172,3 +206,48 @@ export const completeDriverRideService = (driverId: string, bookingId: string) =
 
 export const cancelDriverRideService = (driverId: string, bookingId: string) =>
     transitionDriverRideService({ driverId, bookingId, toStatus: "cancelled" });
+
+export const confirmBookingService = async ({
+    bookingId,
+    driverId,
+}: {
+    bookingId: string;
+    driverId: string;
+}) => {
+    assertValidBookingId(bookingId);
+    const existing = await findDriverBookingByIdRepository(bookingId);
+    if (!existing) throw new NotFoundError("Ride not found");
+
+    const claimed = await confirmBookingRepository({ bookingId, driverId });
+    if (!claimed) {
+        const latest = await findDriverBookingByIdRepository(bookingId);
+        if (latest && latest.driver && toObjectId(latest.driver).toString() === driverId) {
+            await setDriverActiveRideService(driverId, bookingId);
+            return serializeDriverRide(latest);
+        }
+        throw new ConflictError("Ride is no longer available");
+    }
+
+    await setDriverActiveRideService(driverId, bookingId);
+
+    const passenger = passengerOf(claimed.passenger);
+    if (passenger?._id) {
+        await notifyPassenger({
+            bookingId,
+            passengerId: passenger._id,
+            status: "confirmed",
+            driverId,
+        });
+    }
+
+    const notified = await getNotifiedDriversService(bookingId);
+    const otherDrivers = notified.filter((id) => id !== driverId);
+    if (otherDrivers.length > 0) {
+        await removeRideNotification(bookingId, otherDrivers);
+        await deleteNotifiedDriversService(bookingId);
+    }
+    // A claimed ride stops being an open search: drop the stage tracker.
+    await deleteSearchStageService(bookingId);
+
+    return serializeDriverRide(claimed);
+};

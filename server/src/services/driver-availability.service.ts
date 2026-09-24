@@ -3,6 +3,7 @@ import {
     findDriverAvailabilityByUserRepository,
     updateDriverAvailabilityByUserRepository,
 } from "../repositories/driver-application.repository";
+import { removeDriverLocationFromRedisService } from "./location.service";
 import type { DriverAvailabilityStatus } from "../models/driver-application.model";
 
 /**
@@ -37,6 +38,18 @@ export const updateDriverAvailabilityService = async (
     if (!application) {
         throw new NotFoundError("No driver application found for this account");
     }
+    
+    // Also handle realtime state in Redis
+    if (status === "offline") {
+        // Remove driver from realtime GEO index and location metadata
+        try {
+            await removeDriverLocationFromRedisService(driverId);
+            console.log(`[DriverAvailability] Driver ${driverId} went offline, removed from Redis GEO`)
+        } catch (err) {
+            console.error(`[DriverAvailability] Failed to remove driver ${driverId} from Redis GEO:`, err)
+        }
+    }
+    
     return {
         status: application.availabilityStatus,
         updatedAt: application.availabilityUpdatedAt,

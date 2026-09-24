@@ -1,18 +1,125 @@
 import Booking from "../models/booking.model"
+import { Types } from "mongoose"
+import logger from "../config/logger.config"
 
 
-
-
+export type BookingCancellationMeta = {
+    fromStatus: string
+    cancelledBy: "passenger" | "driver" | "system"
+    reason: string
+    cancelledAt: Date
+}
 
 export const createBookingRepository = async (bookingData: any) => {
+    logger.info(`[REPO] createBookingRepository: data=${JSON.stringify(bookingData)}`);
     const booking = new Booking(bookingData)
-    return await booking.save()
+    const saved = await booking.save()
+    logger.info(`[REPO] Booking saved: bookingId=${saved._id}, passenger=${saved.passenger}, status=${saved.status}`);
+    return saved
 }
 
 export const listBookingsRepository = async (passengerId: string) => {
-    return await Booking.find({ passenger: passengerId })
+    logger.info(`[REPO] listBookingsRepository: passengerId=${passengerId}`);
+    const bookings = await Booking.find({ passenger: passengerId })
         .sort({ _id: -1 })
+        .populate("driver", "name image")
+        .lean()
+        .exec()
+    logger.info(`[REPO] Found ${bookings.length} bookings for passengerId=${passengerId}`);
+    return bookings
+}
+
+export const findBookingByIdRepository = async (bookingId: string) => {
+    return await Booking.findById(bookingId)
+        .populate("passenger", "name email")
+        .populate("driver", "name image")
         .lean()
         .exec()
 }
 
+/**
+ * Passive endpoints (list/get) should never mutate; this deals with the
+ * booking whose driver cancelled it heading to confirmed/arriving/arrived — the
+ * exact same transition rules the driver-ride service enforces, but triggered
+ * from the passenger side. Only returns when `pending + driver:null`, so a
+ * ride already claimed (or already terminal) is left untouched.
+ */
+export const cancelBookingRepository = async ({
+    bookingId,
+    passengerId,
+    fromStatus,
+    cancelledBy,
+    reason,
+    cancelledAt,
+}: {
+    bookingId: string
+    passengerId: string
+} & BookingCancellationMeta) => {
+    return await Booking.findOneAndUpdate(
+        {
+            _id: new Types.ObjectId(bookingId),
+            passenger: new Types.ObjectId(passengerId),
+            status: fromStatus,
+        },
+        {
+            $set: {
+                status: "cancelled",
+                cancelledAt,
+                cancelledBy,
+                cancellationReason: reason,
+            },
+        },
+        { new: true }
+    )
+        .populate("passenger", "name email")
+        .populate("driver", "name image")
+        .lean()
+        .exec()
+}
+
+export const reviewBookingRepository = async ({
+    bookingId,
+    passengerId,
+    rating,
+    comment,
+}: {
+    bookingId: string
+    passengerId: string
+    rating: number
+    comment: string | null
+}) => {
+    return await Booking.findOneAndUpdate(
+        {
+            _id: new Types.ObjectId(bookingId),
+            passenger: new Types.ObjectId(passengerId),
+            status: "completed",
+            "feedback.reviewedAt": null,
+        },
+        {
+            $set: {
+                feedback: { rating, comment, reviewedAt: new Date() },
+            },
+        },
+        { new: true }
+    )
+        .populate("passenger", "name email")
+        .populate("driver", "name image")
+        .lean()
+        .exec()
+}
+
+export const findPendingSearchingBookingsRepository = async () => {
+    return await Booking.find({ status: "pending", driver: null })
+        .populate("passenger", "name email")
+        .sort({ _id: -1 })
+        .limit(100)
+        .lean()
+        .exec()
+}
+
+export const deleteBookingsByIdsRepository = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    await Booking.deleteMany({
+        _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
+    });
+}

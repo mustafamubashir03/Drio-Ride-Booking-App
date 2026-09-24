@@ -9,7 +9,7 @@ const roleDefinitions: Record<string, { description: string; resources: Record<s
         resources: {
             user: ["get"],
             session: ["list", "revoke"],
-            booking: ["create", "read", "list", "cancel"],
+            booking: ["create", "read", "list", "cancel", "review"],
         },
     },
     driver: {
@@ -25,7 +25,7 @@ const roleDefinitions: Record<string, { description: string; resources: Record<s
         resources: {
             user: ["create", "list", "get", "update", "delete", "set-role"],
             session: ["list", "revoke"],
-            booking: ["create", "read", "list", "update", "cancel"],
+            booking: ["create", "read", "list", "update", "cancel", "review"],
         },
     },
 };
