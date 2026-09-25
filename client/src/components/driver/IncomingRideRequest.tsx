@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Check, Loader2, MapPin, Navigation, Timer, UserRound, X } from "lucide-react";
@@ -15,6 +16,7 @@ interface IncomingRideRequestProps {
   fare: number;
   distance?: number;
   passengerName?: string;
+  passengerImage?: string | null;
   expiresAt: number;
   onDismiss: () => void;
   onAccept?: (rideId: string) => void;
@@ -29,6 +31,7 @@ export function IncomingRideRequest({
   fare,
   distance,
   passengerName,
+  passengerImage,
   expiresAt,
   onDismiss,
   onAccept,
@@ -76,7 +79,7 @@ export function IncomingRideRequest({
         className={cn(
           "pointer-events-none fixed left-[max(0.75rem,env(safe-area-inset-left))] right-[max(0.75rem,env(safe-area-inset-right))] bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 w-auto",
           inline
-            ? "lg:relative lg:inset-auto lg:z-auto lg:w-full"
+            ? "lg:relative lg:inset-auto lg:z-auto lg:mx-auto lg:w-full lg:max-w-2xl"
             : "lg:hidden",
         )}
       >
@@ -112,14 +115,19 @@ export function IncomingRideRequest({
 
             <Separator className="my-3" />
 
-            {passengerName && (
-              <div className="mb-3 flex min-w-0 items-center gap-2 rounded-xl border border-border bg-muted/35 px-3 py-2.5">
-                <UserRound className="h-3.5 w-3.5 shrink-0 text-primary" />
-                <p className="truncate text-[12.5px] font-medium text-foreground">
-                  {passengerName}
-                </p>
-              </div>
-            )}
+             {(passengerName || passengerImage) && (
+               <div className="mb-3 flex min-w-0 items-center gap-2.5 rounded-xl border border-border bg-muted/35 px-3 py-2.5">
+                 <Avatar size="sm">
+                   {passengerImage ? <AvatarImage src={passengerImage} alt={passengerName || "Passenger"} /> : null}
+                   <AvatarFallback>
+                     <UserRound className="h-3 w-3 text-primary" />
+                   </AvatarFallback>
+                 </Avatar>
+                 <p className="truncate text-[12.5px] font-medium text-foreground">
+                   {passengerName || "Passenger"}
+                 </p>
+               </div>
+             )}
 
             <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5">
               <div className="flex items-start gap-2.5">

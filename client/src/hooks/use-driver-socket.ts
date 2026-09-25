@@ -27,6 +27,7 @@ interface RideNotificationData {
     fare: number;
     distance?: number;
     passengerName?: string;
+    passengerImage?: string | null;
   };
   timeStamps: string;
 }

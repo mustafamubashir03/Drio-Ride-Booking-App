@@ -15,6 +15,7 @@ export type RideInfo = {
     fare: number;
     distance: number;
     passengerName?: string;
+    passengerImage?: string | null;
 };
 
 export type SearchProgress = {

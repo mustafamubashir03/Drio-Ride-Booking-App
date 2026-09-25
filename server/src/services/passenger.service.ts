@@ -16,11 +16,13 @@ export const createBookingService = async ({
     source,
     destination,
     passengerName,
+    passengerImage,
 }: {
     passengerId: string,
     source: BookingLocation,
     destination: BookingLocation,
     passengerName?: string,
+    passengerImage?: string | null,
 }) => {
     try {
         const distance = Math.round(calculateHaversineDistance(source.latitude, source.longitude, destination.latitude, destination.longitude) * 100) / 100;
@@ -45,6 +47,7 @@ export const createBookingService = async ({
                 fare,
                 distance,
                 passengerName: passengerName || "Passenger",
+                passengerImage: passengerImage ?? undefined,
             };
             const notified = await kickoffDriverSearch({
                 bookingId: booking._id.toString(),

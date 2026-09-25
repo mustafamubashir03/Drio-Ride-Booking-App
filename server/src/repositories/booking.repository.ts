@@ -156,7 +156,7 @@ export const reviewBookingRepository = async ({
 
 export const findPendingSearchingBookingsRepository = async () => {
     return await Booking.find({ status: "pending", driver: null })
-        .populate("passenger", "name email")
+        .populate("passenger", "name email image")
         .sort({ _id: -1 })
         .limit(100)
         .lean()

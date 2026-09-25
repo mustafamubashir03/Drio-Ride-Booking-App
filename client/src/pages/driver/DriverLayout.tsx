@@ -72,6 +72,7 @@ interface IncomingRideRequestData {
   fare: number;
   distance?: number;
   passengerName?: string;
+  passengerImage?: string | null;
   expiresAt: number;
 }
 
@@ -109,7 +110,7 @@ export default function DriverLayout() {
   const handleNewRideNotification = useCallback(
     (data: {
       rideId: string;
-      rideInfo: { pickup: string; destination: string; fare: number; distance?: number; passengerName?: string };
+      rideInfo: { pickup: string; destination: string; fare: number; distance?: number; passengerName?: string; passengerImage?: string | null };
       timeStamps: string;
     }) => {
       if (handledRideIdsRef.current.has(data.rideId)) return;
@@ -121,6 +122,7 @@ export default function DriverLayout() {
         fare: data.rideInfo.fare,
         distance: data.rideInfo.distance,
         passengerName: data.rideInfo.passengerName,
+        passengerImage: data.rideInfo.passengerImage ?? null,
         expiresAt,
       });
     },
@@ -351,6 +353,7 @@ export default function DriverLayout() {
                 fare={incomingRide.fare}
                 distance={incomingRide.distance}
                 passengerName={incomingRide.passengerName}
+                passengerImage={incomingRide.passengerImage}
                 expiresAt={incomingRide.expiresAt}
                 onDismiss={handleDismissIncomingRide}
                 onAccept={handleAcceptRide}

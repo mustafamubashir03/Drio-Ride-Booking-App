@@ -89,6 +89,7 @@ const buildRideInfo = (booking: any): RideInfo => ({
     fare: typeof booking.fare === "number" ? booking.fare : 0,
     distance: typeof booking.distance === "number" ? booking.distance : 0,
     passengerName: booking.passenger?.name || "Passenger",
+    passengerImage: booking.passenger?.image ?? undefined,
 });
 
 /**
