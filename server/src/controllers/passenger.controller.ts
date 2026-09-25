@@ -4,6 +4,7 @@ import { createBookingService, listBookingsService } from "../services/passenger
 import { getDriverLocationMetadata } from "../services/location.service";
 import { Types } from "mongoose";
 import { cancelPassengerRideService, reviewPassengerRideService } from "../services/passenger-ride.service";
+import { getDriverRatingSummariesRepository } from "../repositories/booking.repository";
 
 
 export const createBookingController = async (req: Request, res: Response) => {
@@ -43,6 +44,13 @@ export const listBookingsController = async (req: Request, res: Response) => {
         const bookings = await listBookingsService(passengerId);
         logger.info(`[CONTROLLER] listBookingsService returned ${bookings.length} bookings`);
 
+        const driverIds = bookings.flatMap((booking: any) => {
+            const driver = booking.driver;
+            if (!driver) return [];
+            return [String(typeof driver === "object" ? driver._id : driver)];
+        });
+        const driverRatings = await getDriverRatingSummariesRepository(driverIds);
+
         const cleanDisplayName = (value?: string) =>
             value && /[+-]?\d+\.\d{2,}\s*,\s*[+-]?\d+\.\d{2,}/.test(value)
                 ? value.split(" · ")[0].trim()
@@ -74,6 +82,9 @@ export const listBookingsController = async (req: Request, res: Response) => {
                 driver: driverId,
                 driverInfo: driver
                     ? { name: driver.name ?? null, image: driver.image ?? null }
+                    : null,
+                driverRating: driverId
+                    ? driverRatings.get(driverId) ?? { average: null, count: 0 }
                     : null,
                 // Most recent driver position from Redis (30s TTL). Used to
                 // reconstruct the moving driver marker after a reload until

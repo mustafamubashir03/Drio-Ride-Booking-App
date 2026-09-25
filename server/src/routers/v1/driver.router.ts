@@ -11,6 +11,7 @@ import {
     confirmDriverRideController,
     getDriverActiveRideController,
     getDriverRideController,
+    getDriverRatingController,
     listDriverRidesController,
     markDriverArrivedController,
     markDriverArrivingController,
@@ -33,6 +34,7 @@ driverRouter.post('/location', updateLocationController)
 driverRouter.get('/status', getDriverAvailabilityController)
 driverRouter.put('/status', validateRequestBody(driverAvailabilitySchema), updateDriverAvailabilityController)
 
+driverRouter.get('/rating', getDriverRatingController)
 driverRouter.get('/rides/active', getDriverActiveRideController)
 driverRouter.get('/rides', listDriverRidesController)
 driverRouter.get('/rides/:bookingId', getDriverRideController)

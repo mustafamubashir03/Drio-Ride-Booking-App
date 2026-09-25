@@ -178,6 +178,9 @@ export const reviewPassengerRideService = async ({
     if (booking.status !== "completed") {
         throw new ConflictError("This ride can only be reviewed once it is completed");
     }
+    if (!booking.driver) {
+        throw new ConflictError("This completed ride has no assigned driver to review");
+    }
 
     const alreadyReviewed = booking.feedback?.reviewedAt != null;
     if (alreadyReviewed) {

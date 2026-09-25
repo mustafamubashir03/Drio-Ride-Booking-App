@@ -89,6 +89,8 @@ const bookingSchema = new mongoose.Schema({
 })
 
 
+bookingSchema.index({ driver: 1, status: 1, "feedback.reviewedAt": 1 })
+
 const Booking = mongoose.model("Booking", bookingSchema)
 
 export default Booking;

@@ -16,6 +16,7 @@ import {
     getNotifiedDriversService,
     setDriverActiveRideService,
 } from "./location.service";
+import { getDriverRatingSummariesRepository } from "../repositories/booking.repository";
 import { notifyPassenger, removeRideNotification } from "./notification-bridge.service";
 
 /**
@@ -115,6 +116,11 @@ export const getDriverActiveRideService = async (driverId: string) => {
 export const listDriverRidesService = async (driverId: string) => {
     const bookings = await listDriverBookingsRepository(driverId);
     return bookings.map((booking) => serializeDriverRide(booking));
+};
+
+export const getDriverRatingSummaryService = async (driverId: string) => {
+    const ratings = await getDriverRatingSummariesRepository([driverId]);
+    return ratings.get(driverId) ?? { average: null, count: 0 };
 };
 
 export const getDriverRideService = async (

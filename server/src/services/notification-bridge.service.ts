@@ -1,3 +1,4 @@
+import { serverConfig } from "../config";
 import logger from "../config/logger.config";
 
 /**
@@ -6,7 +7,7 @@ import logger from "../config/logger.config";
  * database; it only fans these events out to online clients via their sockets.
  */
 
-const SOCKET_SERVER_URL = process.env.SOCKET_SERVER_URL || "http://localhost:5001";
+const SOCKET_SERVER_URL = serverConfig.SOCKET_SERVER_URL;
 
 export type RideInfo = {
     pickup: string;

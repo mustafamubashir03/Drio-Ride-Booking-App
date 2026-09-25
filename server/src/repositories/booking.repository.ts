@@ -30,6 +30,48 @@ export const listBookingsRepository = async (passengerId: string) => {
     return bookings
 }
 
+export type DriverRatingSummary = {
+    average: number | null
+    count: number
+}
+
+export const getDriverRatingSummariesRepository = async (driverIds: string[]) => {
+    const ids = [...new Set(driverIds)]
+        .filter((driverId) => Types.ObjectId.isValid(driverId))
+        .map((driverId) => new Types.ObjectId(driverId))
+
+    if (ids.length === 0) return new Map<string, DriverRatingSummary>()
+
+    const rows = await Booking.aggregate([
+        {
+            $match: {
+                driver: { $in: ids },
+                status: "completed",
+                "feedback.reviewedAt": { $ne: null },
+                "feedback.rating": {
+                    $type: "number",
+                    $gte: 1,
+                    $lte: 5,
+                },
+            },
+        },
+        {
+            $group: {
+                _id: "$driver",
+                average: { $avg: "$feedback.rating" },
+                count: { $sum: 1 },
+            },
+        },
+    ]).exec()
+
+    return new Map<string, DriverRatingSummary>(
+        rows.map((row) => [
+            String(row._id),
+            { average: row.average, count: row.count },
+        ]),
+    )
+}
+
 export const findBookingByIdRepository = async (bookingId: string) => {
     return await Booking.findById(bookingId)
         .populate("passenger", "name email")
@@ -95,6 +137,7 @@ export const reviewBookingRepository = async ({
         {
             _id: new Types.ObjectId(bookingId),
             passenger: new Types.ObjectId(passengerId),
+            driver: { $ne: null },
             status: "completed",
             "feedback.reviewedAt": null,
         },

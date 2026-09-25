@@ -72,12 +72,18 @@ export const auth = betterAuth({
             logger.info("Verification email sent", { email: user.email });
         },
     },
+    account: {
+        accountLinking: {
+            updateUserInfoOnLink: true,
+        },
+    },
     socialProviders: {
         google: {
             clientId: authConfig.googleClientId,
             clientSecret: authConfig.googleClientSecret,
             accessType: "offline",
             prompt: "select_account consent",
+            overrideUserInfoOnSignIn: true,
         },
     },
     plugins: [

@@ -6,6 +6,7 @@ import {
     confirmBookingService,
     getDriverActiveRideService,
     getDriverRideService,
+    getDriverRatingSummaryService,
     listDriverRidesService,
     markDriverArrivedService,
     markDriverArrivingService,
@@ -37,6 +38,19 @@ export const listDriverRidesController = async (
     try {
         const rides = await listDriverRidesService(driverIdOf(req));
         return res.status(200).json({ success: true, rides });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDriverRatingController = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    try {
+        const rating = await getDriverRatingSummaryService(driverIdOf(req));
+        return res.status(200).json({ success: true, rating });
     } catch (error) {
         next(error);
     }
