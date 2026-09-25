@@ -13,7 +13,7 @@ services:
     region: oregon
     plan: free
     rootDir: server
-    buildCommand: npm ci --include=dev
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/v1/ping/health
     envVars:
