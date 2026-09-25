@@ -7,6 +7,7 @@ import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
 import logger from './config/logger.config';
 import { attachCorrelationIdMiddleware } from './middlewares/correlation.middleware';
+import { logForwardedClientIpMiddleware } from './middlewares/client-ip.middleware';
 import placesRouter from './routers/v1/places.router';
 import routesRouter from './routers/routes.router';
 import { toNodeHandler } from "better-auth/node";
@@ -44,6 +45,10 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
+
+// Log the shape of the forwarded-IP chain before Better Auth rate limiting so
+// a shared fallback bucket can be traced to the exact proxy hops.
+app.use(logForwardedClientIpMiddleware);
 
 // Better Auth must be mounted before express.json() so it can parse its own body.
 app.all("/api/auth/{*splat}", toNodeHandler(auth));
