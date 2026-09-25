@@ -14,6 +14,9 @@ type SessionUser = {
  * Mongo or the DB; identity resolution happens over this HTTP bridge.
  */
 export const resolveSessionUser = async (cookie: string | undefined): Promise<SessionUser | null> => {
+    if (process.env.NODE_ENV === "production") {
+        return null;
+    }
     if (!cookie) {
         logger.warn("[AUTH] passenger-login without a session cookie");
         return null;

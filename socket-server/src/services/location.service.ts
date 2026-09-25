@@ -1,6 +1,5 @@
 import logger from "../config/logger.config";
 import redisClient from "../lib/redis";
-import fs from "fs";
 
 const DRIVER_LOCATION_TTL_SECONDS = 30;
 
@@ -22,10 +21,8 @@ export const addDriverLocationToRedisService = async ({
     timestamp: number | null;
 }) => {
     try {
-        const message = `[LocationService] GEOADD drivers ${driverId} ${longitude} ${latitude}`;
-        console.log(message);
-        fs.appendFileSync("G:/Drio/socket-server/location-service.log", `[${new Date().toISOString()}] ${message}\n`);
-        
+        logger.info(`[LocationService] GEOADD drivers ${driverId} ${longitude} ${latitude}`);
+
         await redisClient.sendCommand(['GEOADD', 'drivers', longitude.toString(), latitude.toString(), driverId]);
         
         // Also store location freshness metadata. `timestamp` is the GPS fix
@@ -42,14 +39,9 @@ export const addDriverLocationToRedisService = async ({
             updatedAt: Date.now()
         };
         await redisClient.set(`driver-location:${driverId}`, JSON.stringify(metadata), { EX: DRIVER_LOCATION_TTL_SECONDS });
-        const msg = `[LocationService] Location updated for driver ${driverId}`;
-        console.log(msg);
-        fs.appendFileSync("G:/Drio/socket-server/location-service.log", `[${new Date().toISOString()}] ${msg}\n`);
+        logger.info(`[LocationService] Location updated for driver ${driverId}`);
     }
     catch (error) {
-        const errMsg = `[LocationService] Failed to add driver location: ${error}`;
-        console.error(errMsg);
-        fs.appendFileSync("G:/Drio/socket-server/location-service.log", `[${new Date().toISOString()}] ${errMsg}\n`);
         logger.error("Failed to add driver location", error);
         throw error;
     }
@@ -71,10 +63,10 @@ export const storeNotifiedDriversService = async (bookingId: string, driverIds: 
 
 export const removeDriverLocationFromRedisService = async (driverId: string) => {
     try {
-        console.log(`[LocationService] Removing driver ${driverId} from GEO and location metadata`)
+        logger.info(`[LocationService] Removing driver ${driverId} from GEO and location metadata`);
         await redisClient.sendCommand(['ZREM', 'drivers', driverId]);
         await redisClient.del(`driver-location:${driverId}`);
-        console.log(`[LocationService] Driver ${driverId} removed from GEO and metadata`)
+        logger.info(`[LocationService] Driver ${driverId} removed from GEO and metadata`);
     }
     catch (error) {
         logger.error("Failed to remove driver location", error);

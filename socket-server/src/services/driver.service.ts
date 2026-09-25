@@ -1,30 +1,16 @@
 import logger from "../config/logger.config";
 import redisClient from "../lib/redis";
-import fs from "fs";
 
 const DRIVER_SOCKET_KEY = "driver-socket";
-const LOG_FILE = "G:/Drio/socket-server/driver-socket.log";
-
-function logToFile(message: string) {
-    const timestamp = new Date().toISOString();
-    fs.appendFileSync(LOG_FILE, `[${timestamp}] ${message}\n`);
-}
 
 export const setDriverSocket = async (driverId: string, socketId: string) => {
     try {
-        const message = `[DriverService] Setting driver socket: driverId=${driverId}, socketId=${socketId}`;
-        console.log(message);
-        logToFile(message);
-        
+        logger.info(`[DriverService] Setting driver socket: driverId=${driverId}, socketId=${socketId}`);
+
         const result = await redisClient.hSet(DRIVER_SOCKET_KEY, driverId, socketId);
-        const resultMsg = `[DriverService] hSet result: ${result}`;
-        console.log(resultMsg);
-        logToFile(resultMsg);
+        logger.info(`[DriverService] hSet result: ${result}`);
     }
     catch (error) {
-        const errorMsg = `[DriverService] Failed to set driver socket: ${error}`;
-        console.error(errorMsg);
-        logToFile(errorMsg);
         logger.error("Failed to set driver socket", error);
         return;
     }

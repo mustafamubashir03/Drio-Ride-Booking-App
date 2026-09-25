@@ -33,9 +33,14 @@ app.use(genericErrorHandler);
 // HTTP API server
 const httpServer = http.createServer(app)
 
-// Socket.IO server
-const socketServer = http.createServer(app)
-export const io = new Server(socketServer, {
+// Socket.IO is attached to the API server unless a distinct SOCKET_PORT is configured
+const socketServer: http.Server | null = serverConfig.SPLIT_SOCKET_SERVER
+    ? http.createServer(app)
+    : null;
+
+const ioTarget = socketServer ?? httpServer;
+
+export const io = new Server(ioTarget, {
   cors: {
     origin: serverConfig.TRUSTED_ORIGINS,
     methods: ["GET", "POST"],
@@ -45,34 +50,51 @@ export const io = new Server(socketServer, {
 
 initSocket(io)
 
+function listen(server: http.Server, port: number, label: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        const onError = (err: Error) => {
+            server.removeListener('listening', onListening);
+            reject(err);
+        };
+        const onListening = () => {
+            server.removeListener('error', onError);
+            console.log(`${label} listening on port ${port}`);
+            resolve();
+        };
+        server.once('error', onError);
+        server.once('listening', onListening);
+        server.listen({ port, host: serverConfig.BIND_HOST, reuseAddr: true });
+    });
+}
+
+function closeServer(server: http.Server | null): Promise<void> {
+    if (!server || !server.listening) {
+        return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+        server.close(() => resolve());
+    });
+}
+
 async function start() {
     // Connect to Redis first
     await connectRedis();
     console.log("Redis connected");
 
-    // Start HTTP API server
-    const PORT = serverConfig.PORT || 5001;
-    const SOCKET_PORT = serverConfig.SOCKET_PORT || 5002;
+    const { PORT, SOCKET_PORT, SPLIT_SOCKET_SERVER } = serverConfig;
 
-    httpServer.listen({ port: PORT, host: serverConfig.BIND_HOST, reuseAddr: true }, () => {
-        console.log(`HTTP API server listening on port ${PORT}`)
-    })
+    await listen(httpServer, PORT, 'HTTP API server');
 
-    httpServer.on('error', (err: Error) => {
-        console.error(`HTTP Server error:`, err)
-    })
-
-    socketServer.listen({ port: SOCKET_PORT, host: serverConfig.BIND_HOST, reuseAddr: true }, () => {
-        console.log(`Socket.IO server listening on port ${SOCKET_PORT}`)
-    })
-
-    socketServer.on('error', (err: Error) => {
-        console.error(`Socket Server error:`, err)
-    })
+    if (SPLIT_SOCKET_SERVER && socketServer && SOCKET_PORT) {
+        await listen(socketServer, SOCKET_PORT, 'Socket.IO server');
+    } else {
+        console.log(`Socket.IO attached to HTTP API server on port ${PORT}`);
+    }
 }
 
 start().catch((err) => {
     console.error("Failed to start server:", err);
+    disconnectRedis().catch(() => undefined);
     process.exit(1);
 })
 
@@ -95,19 +117,16 @@ function shutdown(signal: NodeJS.Signals) {
         } catch (err) {
             console.error("[socket-server] Failed to disconnect Redis during shutdown:", err);
         }
-        // Close Socket.IO first (also closes its underlying HTTP server), then the HTTP API server.
+        // Close Socket.IO first (it also closes the HTTP server it is attached to), then the API server.
         io.close();
-        const closeHttp = new Promise<void>((resolve) => {
-            httpServer.close(() => resolve());
-        });
-        const closeSocket = new Promise<void>((resolve) => {
-            socketServer.close(() => resolve());
-        });
-        Promise.all([closeHttp, closeSocket]).then(() => {
+        await Promise.all([closeServer(httpServer), closeServer(socketServer)]);
+        if (serverConfig.SPLIT_SOCKET_SERVER) {
             console.log("[socket-server] HTTP + Socket servers closed.");
-            clearTimeout(forceExit);
-            process.exit(0);
-        });
+        } else {
+            console.log("[socket-server] HTTP server closed.");
+        }
+        clearTimeout(forceExit);
+        process.exit(0);
     })();
 }
 
