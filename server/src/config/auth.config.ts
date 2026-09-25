@@ -16,9 +16,10 @@ const defaultTrustedOrigins: string[] = [];
 const parseTrustedOrigins = (value: string | undefined) =>
     value?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? [];
 
-const configuredTrustedOrigins = parseTrustedOrigins(
-    process.env.BETTER_AUTH_TRUSTED_ORIGINS || process.env.TRUSTED_ORIGINS,
-);
+const configuredTrustedOrigins = Array.from(new Set([
+    ...parseTrustedOrigins(process.env.TRUSTED_ORIGINS),
+    ...parseTrustedOrigins(process.env.BETTER_AUTH_TRUSTED_ORIGINS),
+]));
 
 const isLoopbackHost = (hostname: string) =>
     hostname === "localhost" ||
@@ -87,8 +88,8 @@ export const authConfig: AuthConfig = {
     googleClientId: process.env.GOOGLE_CLIENT_ID || "",
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
     trustedOrigins: configuredTrustedOrigins.length > 0
-        ? configuredTrustedOrigins
-        : defaultTrustedOrigins,
+        ? Array.from(new Set([betterAuthUrl, ...configuredTrustedOrigins]))
+        : [betterAuthUrl, ...defaultTrustedOrigins],
     disableEmailVerification:
         process.env.NODE_ENV !== "production" &&
         (process.env.DRIO_DISABLE_EMAIL_VERIFICATION === "true" ||
