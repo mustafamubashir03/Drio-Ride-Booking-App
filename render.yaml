@@ -40,8 +40,6 @@ services:
           type: web
           name: drio-socket-server
           envVarKey: RENDER_EXTERNAL_URL
-      - key: SOCKET_BRIDGE_SECRET
-        generateValue: true
       - key: DRIO_DISABLE_EMAIL_VERIFICATION
         value: "false"
       - key: GOOGLE_CLIENT_ID
@@ -89,11 +87,6 @@ services:
           type: keyvalue
           name: drio-redis
           property: connectionString
-      - key: SOCKET_BRIDGE_SECRET
-        fromService:
-          type: web
-          name: drio-server
-          envVarKey: SOCKET_BRIDGE_SECRET
       - key: TRUSTED_ORIGINS
         value: https://drio-ride-booking-app.onrender.com,http://localhost:5173,http://127.0.0.1:5173
 
