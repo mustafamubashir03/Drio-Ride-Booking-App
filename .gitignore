@@ -10,6 +10,9 @@ out/
 .env
 .env.*
 !.env.example
+!client/.env.development
+!client/.env.production
+!**/.env.production.example
 *.local
 
 # ---- Logs ----
