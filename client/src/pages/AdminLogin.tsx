@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { CircleAlert } from "lucide-react";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -73,7 +74,7 @@ export default function AdminLogin() {
   if (isPending || redirecting) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary" />
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary motion-reduce:animate-none" />
       </div>
     );
   }
@@ -89,7 +90,7 @@ export default function AdminLogin() {
       badge="ADMIN PORTAL"
     >
       <div className="mb-8 lg:hidden">
-        <Logo />
+        <Logo className="!text-[2rem]" />
       </div>
 
       <Button
@@ -114,8 +115,9 @@ export default function AdminLogin() {
         {error && (
           <div
             role="alert"
-            className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+            className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-[13px] font-medium text-destructive"
           >
+            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             {error}
           </div>
         )}
@@ -159,13 +161,13 @@ export default function AdminLogin() {
           <div className="flex flex-wrap gap-3">
             <Link
               to="/login"
-              className="shrink-0 whitespace-nowrap font-semibold text-primary hover:text-drio-accent-hover transition-colors"
+              className="shrink-0 whitespace-nowrap rounded-md font-semibold text-primary transition-colors duration-150 hover:text-drio-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
             >
               Passenger login
             </Link>
             <Link
               to="/driver/login"
-              className="shrink-0 whitespace-nowrap font-semibold text-primary hover:text-drio-accent-hover transition-colors"
+              className="shrink-0 whitespace-nowrap rounded-md font-semibold text-primary transition-colors duration-150 hover:text-drio-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
             >
               Driver login
             </Link>

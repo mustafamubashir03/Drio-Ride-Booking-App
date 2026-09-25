@@ -1,4 +1,5 @@
-import type { BookingStatus, BookingCoordinates } from "./bookings-api";
+import type { BookingStatus, BookingCoordinates, DriverRatingSummary } from "./bookings-api";
+import { apiFetch } from "./runtime-config";
 
 export const DRIVER_DOCUMENT_TYPES = ["cnic", "license", "vehicle-registration"] as const;
 export type DriverDocumentType = (typeof DRIVER_DOCUMENT_TYPES)[number];
@@ -59,7 +60,7 @@ export type DriverApplicationsOverview = {
 
 
 export async function createDriverApplication(): Promise<DriverApplication> {
-    const response = await fetch("/api/v1/driver-applications", { method: "POST" });
+    const response = await apiFetch("/api/v1/driver-applications", { method: "POST" });
     const data = (await response.json()) as { success?: boolean; application?: DriverApplication; message?: string };
     if (!response.ok || !data.success || !data.application) {
         throw new Error(data.message ?? "Could not start your application");
@@ -68,7 +69,7 @@ export async function createDriverApplication(): Promise<DriverApplication> {
 }
 
 export async function fetchMyDriverApplication(): Promise<DriverApplication | null> {
-    const response = await fetch("/api/v1/driver-applications/me");
+    const response = await apiFetch("/api/v1/driver-applications/me");
     const data = (await response.json()) as { success?: boolean; application?: DriverApplication | null; message?: string };
     if (!response.ok || !data.success) {
         throw new Error(data.message ?? "Could not load your application");
@@ -84,7 +85,7 @@ export async function uploadDriverDocument(args: {
     formData.append("file", args.file);
     formData.append("documentType", args.documentType);
 
-    const response = await fetch("/api/v1/driver-applications/documents", { method: "POST", body: formData });
+    const response = await apiFetch("/api/v1/driver-applications/documents", { method: "POST", body: formData });
     const data = (await response.json()) as {
         success?: boolean;
         document?: DriverApplicationDocument;
@@ -108,7 +109,7 @@ export async function listDriverApplicationsAdminApi(args: {
     if (args.status) query.set("status", args.status);
     const qs = query.toString();
 
-    const response = await fetch(`/api/v1/admin/driver-applications${qs ? `?${qs}` : ""}`);
+    const response = await apiFetch(`/api/v1/admin/driver-applications${qs ? `?${qs}` : ""}`);
     const data = (await response.json()) as {
         success?: boolean;
         applications?: AdminDriverApplication[];
@@ -135,7 +136,7 @@ export async function listDriverApplicationsAdminApi(args: {
 }
 
 export async function getDriverApplicationAdminApi(applicationId: string): Promise<AdminDriverApplication> {
-    const response = await fetch(`/api/v1/admin/driver-applications/${encodeURIComponent(applicationId)}`);
+    const response = await apiFetch(`/api/v1/admin/driver-applications/${encodeURIComponent(applicationId)}`);
     const data = (await response.json()) as {
         success?: boolean;
         application?: AdminDriverApplication;
@@ -153,7 +154,7 @@ export async function reviewDriverApplicationAdminApi(args: {
     adminNote?: string | null;
     rejectionReason?: string | null;
 }): Promise<AdminDriverApplication> {
-    const response = await fetch(
+    const response = await apiFetch(
         `/api/v1/admin/driver-applications/${encodeURIComponent(args.applicationId)}/review`,
         {
             method: "POST",
@@ -254,7 +255,7 @@ async function readDriverRide(
 }
 
 export async function fetchDriverAvailability(): Promise<DriverAvailability> {
-    const response = await fetch("/api/v1/driver/status");
+    const response = await apiFetch("/api/v1/driver/status");
     const data = (await response.json()) as {
         success?: boolean;
         availability?: DriverAvailability;
@@ -269,7 +270,7 @@ export async function fetchDriverAvailability(): Promise<DriverAvailability> {
 export async function setDriverAvailability(
     status: DriverAvailabilityStatus
 ): Promise<DriverAvailability> {
-    const response = await fetch("/api/v1/driver/status", {
+    const response = await apiFetch("/api/v1/driver/status", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ availabilityStatus: status }),
@@ -286,7 +287,7 @@ export async function setDriverAvailability(
 }
 
 export async function fetchDriverActiveRide(): Promise<DriverRide | null> {
-    const response = await fetch("/api/v1/driver/rides/active");
+    const response = await apiFetch("/api/v1/driver/rides/active");
     const data = (await response.json()) as {
         success?: boolean;
         ride?: DriverRide | null;
@@ -299,7 +300,7 @@ export async function fetchDriverActiveRide(): Promise<DriverRide | null> {
 }
 
 export async function fetchDriverRides(): Promise<DriverRide[]> {
-    const response = await fetch("/api/v1/driver/rides");
+    const response = await apiFetch("/api/v1/driver/rides");
     const data = (await response.json()) as {
         success?: boolean;
         rides?: DriverRide[];
@@ -312,7 +313,7 @@ export async function fetchDriverRides(): Promise<DriverRide[]> {
 }
 
 export async function fetchDriverRide(bookingId: string): Promise<DriverRide> {
-    const response = await fetch(
+    const response = await apiFetch(
         `/api/v1/driver/rides/${encodeURIComponent(bookingId)}`
     );
     return readDriverRide(response, "Could not load this ride");
@@ -330,7 +331,7 @@ export async function transitionDriverRide(
     bookingId: string,
     action: DriverRideAction
 ): Promise<DriverRide> {
-    const response = await fetch(
+    const response = await apiFetch(
         `/api/v1/driver/rides/${encodeURIComponent(bookingId)}/${action}`,
         { method: "POST" }
     );
@@ -338,7 +339,7 @@ export async function transitionDriverRide(
 }
 
 export async function confirmBooking(bookingId: string): Promise<DriverRide> {
-    const response = await fetch(
+    const response = await apiFetch(
         `/api/v1/driver/rides/${encodeURIComponent(bookingId)}/confirm`,
         { method: "POST" }
     );
@@ -356,8 +357,21 @@ export async function confirmBooking(bookingId: string): Promise<DriverRide> {
     return readDriverRide(response, "Could not confirm this ride");
 }
 
+export async function fetchDriverRating(): Promise<DriverRatingSummary> {
+    const response = await apiFetch("/api/v1/driver/rating");
+    const data = (await response.json()) as {
+        success?: boolean;
+        rating?: DriverRatingSummary;
+        message?: string;
+    };
+    if (!response.ok || !data.success || !data.rating) {
+        throw new Error(data.message ?? "Could not load your rating");
+    }
+    return data.rating;
+}
+
 export async function fetchDriverEarnings(): Promise<DriverEarningsSummary> {
-    const response = await fetch("/api/v1/driver/earnings");
+    const response = await apiFetch("/api/v1/driver/earnings");
     const data = (await response.json()) as {
         success?: boolean;
         earnings?: DriverEarningsSummary;

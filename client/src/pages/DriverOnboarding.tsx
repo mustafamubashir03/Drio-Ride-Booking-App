@@ -18,8 +18,11 @@ import {
 import {
   AtSign,
   Car,
-  CircleCheck,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
   FileUp,
+  Inbox,
   Loader2,
   User as UserIcon,
 } from "lucide-react";
@@ -46,12 +49,14 @@ export default function DriverOnboarding() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     fetchMyDriverApplication()
       .then((application) => {
         if (cancelled) return;
+        setLoadError(null);
         setApp(application);
         if (application?.status === "approved") {
           navigate("/driver/dashboard", { replace: true });
@@ -62,7 +67,7 @@ export default function DriverOnboarding() {
         }
       })
       .catch(() => {
-        if (!cancelled) setCreateError("Could not load your driver application.");
+        if (!cancelled) setLoadError("Could not load your driver application.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -94,12 +99,17 @@ export default function DriverOnboarding() {
   if (sessionPending || loading) {
     return (
       <MotionPage className="flex min-h-dvh items-center justify-center bg-background">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary" />
+        <div
+          role="status"
+          aria-label="Loading driver onboarding"
+          className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary motion-reduce:animate-none"
+        />
       </MotionPage>
     );
   }
 
   const hasApplication = Boolean(app);
+  const visibleError = loadError ?? createError;
 
   return (
     <MotionPage className="flex min-h-dvh flex-col bg-background">
@@ -134,26 +144,37 @@ export default function DriverOnboarding() {
           </p>
         </div>
 
-        {createError && (
+        {visibleError && (
           <div
             role="alert"
-            className="mb-5 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+            className="mb-5 flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-[13px] font-medium break-words text-destructive [overflow-wrap:anywhere]"
           >
-            {createError}
+            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            {visibleError}
           </div>
         )}
 
         {hasApplication && app && app.status === "pending" && (
-          <div className="mb-5 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/8 px-4 py-3">
-            <CircleCheck className="mt-0.5 h-4 w-4 text-primary shrink-0" />
+          <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3">
+            <span
+              aria-hidden
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/15"
+            >
+              <Clock3 className="h-3.5 w-3.5 text-amber-500" />
+            </span>
             <div>
               <p className="text-[13px] font-semibold text-foreground">
                 Application submitted
               </p>
-              <p className="mt-0.5 text-[12px] text-muted-foreground">
-                Status: Pending review · submitted{" "}
-                {formatSubmittedAt(app.submittedAt) || "recently"}. You can still
-                add or replace documents.
+              <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-muted-foreground">
+                <Badge
+                  variant="outline"
+                  className="h-4 border-amber-500/25 bg-amber-500/15 text-[10px] text-amber-500"
+                >
+                  Pending review
+                </Badge>
+                submitted {formatSubmittedAt(app.submittedAt) || "recently"}. You
+                can still add or replace documents.
               </p>
             </div>
           </div>
@@ -161,28 +182,29 @@ export default function DriverOnboarding() {
 
         {/* Step 1 — Personal information */}
         <Card className="mb-4">
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="mb-4 flex items-center gap-2">
-              <UserIcon className="h-4 w-4 text-primary" />
+              <UserIcon className="h-4 w-4 text-primary" aria-hidden />
               <h2 className="text-[15px] font-semibold text-foreground">
                 Personal information
               </h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <p className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
                   Full name
                 </p>
-                <p className="mt-1 truncate text-[14px] font-semibold text-foreground">
+                <p className="mt-1 flex items-center gap-1.5 truncate text-[14px] font-semibold text-foreground">
+                  <UserIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
                   {user?.name ?? "—"}
                 </p>
               </div>
               <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <p className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
                   Email
                 </p>
-                <p className="mt-1 flex items-center gap-1 truncate text-[14px] font-semibold text-foreground">
-                  <AtSign className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <p className="mt-1 flex items-center gap-1.5 truncate text-[14px] font-semibold text-foreground">
+                  <AtSign className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
                   {user?.email ?? "—"}
                 </p>
               </div>
@@ -196,13 +218,13 @@ export default function DriverOnboarding() {
 
         {/* Step 2 — Vehicle information */}
         <Card className="mb-4">
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="mb-4 flex items-center gap-2">
-              <Car className="h-4 w-4 text-primary" />
+              <Car className="h-4 w-4 text-primary" aria-hidden />
               <h2 className="text-[15px] font-semibold text-foreground">
                 Vehicle information
               </h2>
-              <Badge variant="secondary" className="ml-auto">
+              <Badge variant="outline" className="ml-auto text-muted-foreground">
                 Coming soon
               </Badge>
             </div>
@@ -216,16 +238,28 @@ export default function DriverOnboarding() {
 
         {/* Step 3 — Documents */}
         <Card className="mb-4">
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="mb-4 flex items-center gap-2">
-              <FileUp className="h-4 w-4 text-primary" />
+              <FileUp className="h-4 w-4 text-primary" aria-hidden />
               <h2 className="text-[15px] font-semibold text-foreground">
                 Required documents
               </h2>
+              {hasApplication && (
+                <span
+                  className={`ml-auto text-[11px] tabular-nums ${
+                    (app?.documents.length ?? 0) >= 3
+                      ? "font-semibold text-drio-success"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {app?.documents.length ?? 0} / 3 uploaded
+                </span>
+              )}
             </div>
 
             {!hasApplication ? (
-              <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-center">
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-center">
+                <Inbox className="h-5 w-5 text-muted-foreground/60" aria-hidden />
                 <p className="text-[13px] text-muted-foreground">
                   Start your application first to unlock document uploads.
                 </p>
@@ -246,9 +280,9 @@ export default function DriverOnboarding() {
 
         {/* Step 4 — Review & submit */}
         <Card className="mb-8">
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="mb-4 flex items-center gap-2">
-              <CircleCheck className="h-4 w-4 text-primary" />
+              <CheckCircle2 className="h-4 w-4 text-primary" aria-hidden />
               <h2 className="text-[15px] font-semibold text-foreground">
                 Review &amp; submit
               </h2>
@@ -256,30 +290,60 @@ export default function DriverOnboarding() {
 
             {!hasApplication ? (
               <>
-                <p className="text-[13px] leading-relaxed text-muted-foreground">
-                  Review your details above, then start your application. It will
-                  immediately enter &quot;Pending review&quot; and you can add or
-                  replace documents until the review is complete.
-                </p>
-                <Button
-                  id="start-driver-application"
-                  size="lg"
-                  className="mt-5 w-full font-semibold hover:scale-[1.01]"
-                  onClick={handleStart}
-                  disabled={creating}
-                >
-                  {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {creating ? "Starting…" : "Start my application"}
-                </Button>
+                {loadError ? (
+                  <div className="rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3">
+                    <p className="text-[13px] leading-relaxed text-muted-foreground">
+                      We couldn&apos;t load your application. Try again before starting a new one.
+                    </p>
+                    <Button
+                      className="mt-3"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => window.location.reload()}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-[13px] leading-relaxed text-muted-foreground">
+                      Review your details above, then start your application. It will
+                      immediately enter &quot;Pending review&quot; and you can add or
+                      replace documents until the review is complete.
+                    </p>
+                    <Button
+                      id="start-driver-application"
+                      size="lg"
+                      className="mt-5 w-full font-semibold hover:scale-[1.01] motion-reduce:scale-100 motion-reduce:transition-none"
+                      onClick={handleStart}
+                      disabled={creating}
+                    >
+                      {creating && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />}
+                      {creating ? "Starting…" : "Start my application"}
+                    </Button>
+                  </>
+                )}
               </>
             ) : (
               <div className="space-y-4">
-                <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-                  <div className="flex items-center justify-between">
+                <div
+                  className={`rounded-xl border px-4 py-3 transition-colors duration-200 motion-reduce:transition-none ${
+                    (app?.documents.length ?? 0) >= 3
+                      ? "border-drio-success/25 bg-drio-success/8"
+                      : "border-border bg-muted/30"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
                     <p className="text-[12px] text-muted-foreground">
                       Documents uploaded
                     </p>
-                    <p className="text-[14px] font-semibold text-foreground">
+                    <p
+                      className={`text-[14px] font-semibold tabular-nums ${
+                        (app?.documents.length ?? 0) >= 3
+                          ? "text-drio-success"
+                          : "text-foreground"
+                      }`}
+                    >
                       {app?.documents.length ?? 0} / 3
                     </p>
                   </div>

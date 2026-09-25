@@ -10,8 +10,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRoute } from "@/hooks/use-route";
 import { useNavigationRoute, type NavigationPhase } from "@/hooks/use-navigation-route";
 import { usePassengerSocket, type DriverLocationData, type PassengerSearchProgress, type RideStatusUpdateData } from "@/hooks/use-passenger-socket";
-import { fetchBookings, cancelBooking, submitBookingReview, type BookingCancelledBy, type BookingDriverInfo, type BookingDriverLocation, type BookingRecord, type BookingStatus } from "@/lib/bookings-api";
+import { fetchBookings, cancelBooking, submitBookingReview, type BookingCancelledBy, type BookingDriverInfo, type BookingDriverLocation, type BookingRecord, type BookingStatus, type DriverRatingSummary } from "@/lib/bookings-api";
 import { formatFare } from "@/lib/format";
+import { apiFetch } from "@/lib/runtime-config";
 import type { PlaceResult, SelectedLocation, RouteResult } from "@/lib/places-api";
 import {
   Home,
@@ -95,6 +96,19 @@ function Initials({ name, email }: { name?: string; email?: string }) {
   return source.charAt(0).toUpperCase();
 }
 
+function RealtimeBadge({ connected, compact = false }: { connected: boolean; compact?: boolean }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+        connected ? "bg-drio-success/15 text-drio-success" : "bg-amber-500/12 text-amber-500"
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-drio-success" : "bg-amber-500"}`} />
+      {connected ? (compact ? "Live" : "Realtime on") : compact ? "Offline" : "Realtime off"}
+    </span>
+  );
+}
+
 function formatDistance(meters: number) {
   if (!Number.isFinite(meters)) return "";
   if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
@@ -136,13 +150,23 @@ function formatTripDate(iso: string) {
 }
 
 const statusBadgeStyles: Record<BookingStatus, string> = {
-  pending: "bg-amber-500/15 text-amber-500 border-amber-500/25",
-  confirmed: "bg-drio-success/15 text-drio-success border-drio-success/25",
-  arriving: "bg-amber-500/15 text-amber-500 border-amber-500/25",
-  arrived: "bg-primary/15 text-primary border-primary/25",
-  in_progress: "bg-drio-success/15 text-drio-success border-drio-success/25",
-  cancelled: "bg-muted/40 text-muted-foreground border-border",
-  completed: "bg-primary/15 text-primary border-primary/25",
+  pending: "border-amber-500/25 bg-amber-500/10 text-amber-500",
+  confirmed: "border-drio-success/25 bg-drio-success/10 text-drio-success",
+  arriving: "border-drio-blue/25 bg-drio-blue/10 text-drio-blue",
+  arrived: "border-primary/25 bg-primary/10 text-primary",
+  in_progress: "border-drio-success/25 bg-drio-success/10 text-drio-success",
+  cancelled: "border-destructive/25 bg-destructive/10 text-destructive",
+  completed: "border-drio-success/25 bg-drio-success/10 text-drio-success",
+};
+
+const statusIconStyles: Record<BookingStatus, string> = {
+  pending: "bg-amber-500/12 text-amber-500",
+  confirmed: "bg-drio-success/12 text-drio-success",
+  arriving: "bg-drio-blue/12 text-drio-blue",
+  arrived: "bg-primary/12 text-primary",
+  in_progress: "bg-drio-success/12 text-drio-success",
+  cancelled: "bg-destructive/10 text-destructive",
+  completed: "bg-drio-success/12 text-drio-success",
 };
 
 const cancelReasons = [
@@ -165,7 +189,7 @@ function TripDetailsStrip({
   rideLabel?: string;
 }) {
   return (
-    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
       {[
         {
           label: "Starting point",
@@ -187,12 +211,12 @@ function TripDetailsStrip({
       ].map((item) => (
         <div
           key={item.label}
-          className="rounded-xl bg-secondary/60 border border-border px-3 py-2.5"
+          className="min-w-0 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5"
         >
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+          <p className="text-[10px] font-medium uppercase leading-none tracking-[0.08em] text-muted-foreground">
             {item.label}
           </p>
-          <p className="text-[13px] font-semibold text-foreground mt-0.5">
+          <p className="mt-1 break-words text-[12.5px] font-semibold leading-[1.35] text-foreground">
             {item.value}
           </p>
         </div>
@@ -204,7 +228,7 @@ function TripDetailsStrip({
 export default function Dashboard() {
   const { data: session } = authClient.useSession();
   const { page, stagger, reduced } = useMotionSystem();
-  const user = (session as unknown as { user?: { id?: string; name?: string; email?: string; image?: string } })?.user;
+  const user = (session as unknown as { user?: { id?: string; name?: string; email?: string; image?: string | null } })?.user;
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [vehicle, setVehicle] = useState<
     (typeof vehicleTypes)[number]["id"]
@@ -223,6 +247,8 @@ export default function Dashboard() {
   const [bookingDriverId, setBookingDriverId] = useState<string | null>(null);
   const [bookingDriverInfo, setBookingDriverInfo] =
     useState<BookingDriverInfo>(null);
+  const [bookingDriverRating, setBookingDriverRating] =
+    useState<DriverRatingSummary | null>(null);
   const [driverLocation, setDriverLocation] = useState<BookingDriverLocation>(null);
   const [bookingCancelledAt, setBookingCancelledAt] = useState<string | null>(null);
   const [bookingCancelledBy, setBookingCancelledBy] =
@@ -243,11 +269,84 @@ export default function Dashboard() {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyReviewId, setHistoryReviewId] = useState<string | null>(null);
+  const [historyReviewRating, setHistoryReviewRating] = useState(0);
+  const [historyReviewComment, setHistoryReviewComment] = useState("");
+  const [historyReviewBusy, setHistoryReviewBusy] = useState(false);
+  const [historyReviewError, setHistoryReviewError] = useState<string | null>(null);
   const historyRequestSeq = useRef(0);
+  const mobileSheetRef = useRef<HTMLDivElement>(null);
+  const historyScrollRef = useRef<HTMLDivElement>(null);
+  const mobileFieldCleanupRef = useRef<(() => void) | null>(null);
   const fromLocationRef = useRef(fromLocation);
   const { route, status: routeStatus, error: routeError } = useRoute(
     fromLocation,
     toLocation,
+  );
+
+  const revealFieldInContainer = (container: HTMLDivElement, field: HTMLElement) => {
+    if (window.matchMedia("(min-width: 1024px)").matches) return;
+
+    mobileFieldCleanupRef.current?.();
+    let frame = 0;
+    const viewport = window.visualViewport;
+    const reveal = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const containerRect = container.getBoundingClientRect();
+        const viewportTop = viewport ? viewport.offsetTop : 0;
+        const viewportBottom = viewport
+          ? viewport.offsetTop + viewport.height
+          : window.innerHeight;
+        const topEdge = Math.max(containerRect.top, viewportTop) + 16;
+        const bottomEdge = Math.max(
+          topEdge,
+          Math.min(containerRect.bottom, viewportBottom) - 72,
+        );
+        const fieldRect = field.getBoundingClientRect();
+        const offset =
+          fieldRect.top < topEdge
+            ? fieldRect.top - topEdge - 8
+            : fieldRect.bottom > bottomEdge
+              ? fieldRect.bottom - bottomEdge + 8
+              : 0;
+
+        if (Math.abs(offset) > 1) {
+          container.scrollBy({ top: offset, behavior: reduced ? "auto" : "smooth" });
+        }
+      });
+    };
+    const stop = () => {
+      window.cancelAnimationFrame(frame);
+      viewport?.removeEventListener("resize", reveal);
+      viewport?.removeEventListener("scroll", reveal);
+      if (mobileFieldCleanupRef.current === stop) {
+        mobileFieldCleanupRef.current = null;
+      }
+    };
+
+    reveal();
+    viewport?.addEventListener("resize", reveal);
+    viewport?.addEventListener("scroll", reveal);
+    field.addEventListener("blur", stop, { once: true });
+    mobileFieldCleanupRef.current = stop;
+  };
+
+  const revealMobileField = (field: HTMLElement) => {
+    const container = mobileSheetRef.current;
+    if (container) revealFieldInContainer(container, field);
+  };
+
+  const revealHistoryField = (field: HTMLElement) => {
+    const container = historyScrollRef.current;
+    if (container) revealFieldInContainer(container, field);
+  };
+
+  useEffect(
+    () => () => {
+      mobileFieldCleanupRef.current?.();
+    },
+    [],
   );
 
   // Passenger navigation mirrors the driver's leg logic: while the driver is
@@ -381,17 +480,29 @@ export default function Dashboard() {
     };
   }, []);
 
-  const loadHistory = async () => {
+  const loadHistory = async (showLoading = true) => {
     const seq = ++historyRequestSeq.current;
-    setHistoryStatus("loading");
-    setHistoryError(null);
+    if (showLoading) {
+      setHistoryStatus("loading");
+      setHistoryError(null);
+    }
     try {
       const list = await fetchBookings();
       if (seq !== historyRequestSeq.current) return;
       setHistory(list);
+      setHistoryReviewId((current) =>
+        current && list.some((booking) =>
+          booking._id === current &&
+          booking.status === "completed" &&
+          booking.driver &&
+          !booking.feedback?.reviewedAt
+        )
+          ? current
+          : null,
+      );
       setHistoryStatus("success");
     } catch (e) {
-      if (seq !== historyRequestSeq.current) return;
+      if (seq !== historyRequestSeq.current || !showLoading) return;
       setHistoryStatus("error");
       setHistoryError(
         e instanceof Error ? e.message : "Could not load your bookings.",
@@ -472,7 +583,7 @@ export default function Dashboard() {
     setBookingState("loading");
     setBookingError(null);
     try {
-      const response = await fetch("/api/v1/passenger/bookings", {
+      const response = await apiFetch("/api/v1/passenger/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -504,6 +615,7 @@ export default function Dashboard() {
       setBookingStatus("pending");
       setBookingDriverId(null);
       setBookingDriverInfo(null);
+      setBookingDriverRating(null);
       setDriverLocation(null);
       setBookingCancelledAt(null);
       setBookingCancelledBy(null);
@@ -563,16 +675,88 @@ export default function Dashboard() {
     setReviewBusy(true);
     setReviewError(null);
     try {
-      await submitBookingReview(bookingId, reviewRating, reviewComment.trim() || undefined);
+      const result = await submitBookingReview(bookingId, reviewRating, reviewComment.trim() || undefined);
+      setBookingFeedback(result.feedback);
       setReviewRating(0);
       setReviewComment("");
-      setReviewDismissed(true);
     } catch (e) {
       setReviewError(
         e instanceof Error ? e.message : "Could not submit your review.",
       );
     } finally {
       setReviewBusy(false);
+    }
+  };
+
+  const openHistoryReview = (booking: BookingRecord) => {
+    if (
+      historyReviewId !== null ||
+      historyReviewBusy ||
+      booking.status !== "completed" ||
+      !booking.driver ||
+      booking.feedback.reviewedAt
+    ) return;
+    setHistoryReviewId(booking._id);
+    setHistoryReviewRating(0);
+    setHistoryReviewComment("");
+    setHistoryReviewError(null);
+  };
+
+  const closeHistoryReview = () => {
+    if (historyReviewBusy) return;
+    setHistoryReviewId(null);
+    setHistoryReviewRating(0);
+    setHistoryReviewComment("");
+    setHistoryReviewError(null);
+  };
+
+  const handleSubmitHistoryReview = async (booking: BookingRecord) => {
+    if (historyReviewBusy || historyReviewRating < 1) return;
+    setHistoryReviewBusy(true);
+    setHistoryReviewError(null);
+    try {
+      const result = await submitBookingReview(
+        booking._id,
+        historyReviewRating,
+        historyReviewComment.trim() || undefined,
+      );
+      const submittedRating = result.feedback.rating;
+      const nextDriverRating: DriverRatingSummary | null =
+        !result.alreadyReviewed && submittedRating != null
+          ? {
+              average:
+                booking.driverRating?.average != null
+                  ? (booking.driverRating.average * booking.driverRating.count + submittedRating) /
+                    (booking.driverRating.count + 1)
+                  : submittedRating,
+              count: (booking.driverRating?.count ?? 0) + 1,
+            }
+          : booking.driverRating ?? null;
+      setHistory((current) =>
+        current.map((item) => {
+          const driverRating =
+            !result.alreadyReviewed &&
+            submittedRating != null &&
+            item.driver === booking.driver
+              ? nextDriverRating
+              : item.driverRating;
+          if (item._id === booking._id) {
+            return { ...item, feedback: result.feedback, driverRating };
+          }
+          if (driverRating !== item.driverRating) {
+            return { ...item, driverRating };
+          }
+          return item;
+        }),
+      );
+      setHistoryReviewId(null);
+      setHistoryReviewRating(0);
+      setHistoryReviewComment("");
+      void loadHistory(false);
+    } catch (e) {
+      setHistoryReviewError(e instanceof Error ? e.message : "Could not submit your review.");
+    } finally {
+      setHistoryReviewBusy(false);
     }
   };
 
@@ -583,6 +767,7 @@ export default function Dashboard() {
     setSearchProgress(null);
     setBookingDriverId(null);
     setBookingDriverInfo(null);
+    setBookingDriverRating(null);
     setDriverLocation(null);
     setBookingCancelledAt(null);
     setBookingCancelledBy(null);
@@ -659,6 +844,7 @@ export default function Dashboard() {
         setBookingFare(current.fare ?? null);
         setBookingDriverId(current.driver);
         setBookingDriverInfo(current.driverInfo ?? null);
+        setBookingDriverRating(current.driverRating ?? null);
         setBookingCancelledAt(current.cancelledAt ?? null);
         setBookingCancelledBy(current.cancelledBy ?? null);
         setBookingFeedback(
@@ -720,6 +906,7 @@ export default function Dashboard() {
         setBookingFare(inFlight.fare ?? null);
         setBookingDriverId(inFlight.driver);
         setBookingDriverInfo(inFlight.driverInfo ?? null);
+        setBookingDriverRating(inFlight.driverRating ?? null);
         setBookingCancelledAt(inFlight.cancelledAt ?? null);
         setBookingCancelledBy(inFlight.cancelledBy ?? null);
         setBookingFeedback(
@@ -846,7 +1033,7 @@ export default function Dashboard() {
         {/* Route status */}
         <div
           id={`${pfx}route-info`}
-          className="rounded-xl border border-border bg-card px-4 py-3"
+          className="rounded-xl border border-border/70 bg-muted/25 px-4 py-3"
         >
           {routeStatus === "loading" && (
             <p className="text-[12px] text-muted-foreground">
@@ -897,9 +1084,10 @@ export default function Dashboard() {
                   id={`${pfx}vehicle-${v.id}`}
                   onClick={() => setVehicle(v.id)}
                   variants={stagger.item}
-                  className={`flex flex-col items-start gap-1.5 rounded-2xl border p-3.5 text-left transition-all duration-200 hover:scale-[1.01] ${isSelected
+                  aria-pressed={isSelected}
+                  className={`flex flex-col items-start gap-1.5 rounded-2xl border p-3.5 text-left outline-none transition-[color,background-color,border-color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-safe:hover:scale-[1.01] motion-safe:active:scale-[0.99] motion-reduce:transition-none ${isSelected
                     ? accent.selectedCard
-                    : "border-border bg-card hover:border-border/80 hover:bg-secondary"
+                    : "border-border bg-card hover:border-ring/30 hover:bg-muted/40"
                     }`}
                 >
                   <Car
@@ -921,18 +1109,20 @@ export default function Dashboard() {
         </div>
 
         {/* Fare estimate */}
-        <div className="rounded-xl bg-secondary/60 border border-border px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/25 px-4 py-3">
           <div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
               Estimated fare
             </p>
-            <p className="text-[18px] font-sans font-bold text-foreground mt-0.5">
+            <p className="mt-1 font-sans text-[18px] font-bold tabular-nums text-foreground">
               {estimatedFareLabel}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[11px] text-muted-foreground">ETA</p>
-            <p className="text-[14px] font-semibold text-foreground mt-0.5">
+            <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              ETA
+            </p>
+            <p className="mt-1 text-[14px] font-semibold tabular-nums text-foreground">
               {selectedVehicle.eta}
             </p>
           </div>
@@ -967,9 +1157,7 @@ export default function Dashboard() {
   const renderRideStatusSurface = (variant: "desktop" | "mobile") => {
     const compact = variant === "mobile";
     const pfx = compact ? "m-" : "";
-    const panelClass = compact
-      ? "px-4 py-4"
-      : "border-t border-border bg-card px-6 py-5";
+    const panelClass = compact ? "px-4 py-4" : "border-t border-border bg-card px-6 py-5";
     return (
       <AnimatePresence>
         {rideBooked && findingDriver && (
@@ -980,7 +1168,7 @@ export default function Dashboard() {
           >
             <div className="flex flex-wrap items-center gap-3">
               <motion.span
-                className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/12"
+                className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${statusIconStyles.pending}`}
                 animate={
                   reduced
                     ? undefined
@@ -988,7 +1176,7 @@ export default function Dashboard() {
                 }
                 transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
               >
-                <Search className="h-4 w-4 text-primary" />
+                <Search className="h-4 w-4" />
               </motion.span>
               <div className="min-w-0">
                 <p className="text-[15px] font-semibold text-foreground">
@@ -1020,13 +1208,13 @@ export default function Dashboard() {
                 type="button"
                 id={`${pfx}cancel-search-btn`}
                 onClick={() => setCancelOpen(true)}
-                className="ml-auto text-[12px] font-semibold text-destructive hover:text-destructive/80 hover:underline transition-colors"
+                className="ml-auto rounded-md text-[12px] font-semibold text-destructive outline-none transition-colors hover:text-destructive/80 hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none"
               >
                 Cancel search
               </button>
             </div>
 
-            <div className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-secondary/40 px-4 py-3">
+            <div className="mt-4 flex min-w-0 items-center gap-3 rounded-2xl border border-border/70 bg-muted/25 px-3.5 py-3">
               <Avatar size="sm">
                 {user?.image ? <AvatarImage src={user.image} alt="" /> : null}
                 <AvatarFallback className="bg-primary/20 text-[11px] font-bold text-primary">
@@ -1034,7 +1222,7 @@ export default function Dashboard() {
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                   Your ride
                 </p>
                 <p className="truncate text-[14px] font-semibold text-foreground">
@@ -1059,8 +1247,10 @@ export default function Dashboard() {
             className={panelClass}
           >
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-drio-success/12">
-                <Car className="h-4 w-4 text-drio-success" />
+              <div
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${statusIconStyles[bookingStatus ?? "confirmed"]}`}
+              >
+                <Car className="h-4 w-4" />
               </div>
               <div className="min-w-0">
                 <p className="text-[15px] font-semibold text-foreground">
@@ -1079,7 +1269,7 @@ export default function Dashboard() {
             </div>
 
             {bookingDriverInfo ? (
-              <div className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-secondary/40 px-4 py-3">
+              <div className="mt-4 flex min-w-0 items-center gap-3 rounded-2xl border border-border/70 bg-muted/25 px-3.5 py-3">
                 <Avatar size="lg">
                   {bookingDriverInfo.image ? (
                     <AvatarImage src={bookingDriverInfo.image} alt="" />
@@ -1089,20 +1279,36 @@ export default function Dashboard() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                     Driver
                   </p>
                   <p className="truncate text-[14px] font-semibold text-foreground">
                     {bookingDriverInfo.name ?? "Driver"}
                   </p>
+                  <div className="mt-0.5 flex items-center gap-1 text-[11.5px] text-muted-foreground">
+                    {bookingDriverRating?.average != null && bookingDriverRating.count > 0 ? (
+                      <>
+                        <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                        <span className="font-semibold text-foreground">
+                          {bookingDriverRating.average.toFixed(1)}
+                        </span>
+                        <span>
+                          · {bookingDriverRating.count}{" "}
+                          {bookingDriverRating.count === 1 ? "rating" : "ratings"}
+                        </span>
+                      </>
+                    ) : (
+                      <span>New driver</span>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-secondary/40 px-4 py-3">
-                <div className="h-10 w-10 animate-pulse rounded-full bg-secondary" />
+              <div className="mt-4 flex min-w-0 items-center gap-3 rounded-2xl border border-border/70 bg-muted/25 px-3.5 py-3">
+                <div className="h-10 w-10 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
                 <div className="space-y-1.5">
-                  <div className="h-2.5 w-20 rounded bg-secondary" />
-                  <div className="h-2 w-32 rounded bg-secondary" />
+                  <div className="h-2.5 w-20 rounded bg-muted motion-reduce:animate-none" />
+                  <div className="h-2 w-32 rounded bg-muted motion-reduce:animate-none" />
                 </div>
               </div>
             )}
@@ -1143,7 +1349,7 @@ export default function Dashboard() {
                 type="button"
                 id={`${pfx}cancel-ride-btn`}
                 onClick={() => setCancelOpen(true)}
-                className="mt-4 text-[12px] font-semibold text-destructive hover:text-destructive/80 hover:underline transition-colors"
+                className="mt-4 rounded-md text-[12px] font-semibold text-destructive outline-none transition-colors hover:text-destructive/80 hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none"
               >
                 Cancel ride
               </button>
@@ -1158,8 +1364,10 @@ export default function Dashboard() {
             className={panelClass}
           >
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted/60">
-                <X className="h-4 w-4 text-muted-foreground" />
+              <div
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${statusIconStyles.cancelled}`}
+              >
+                <X className="h-4 w-4" />
               </div>
               <div className="min-w-0">
                 <p className="text-[15px] font-semibold text-foreground">
@@ -1181,7 +1389,7 @@ export default function Dashboard() {
               </div>
               <Badge
                 variant="outline"
-                className="ml-auto shrink-0 capitalize text-muted-foreground"
+                className={`ml-auto shrink-0 capitalize ${statusBadgeStyles.cancelled}`}
               >
                 cancelled
               </Badge>
@@ -1226,9 +1434,6 @@ export default function Dashboard() {
             className={panelClass}
           >
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/12">
-                <CircleDollarSign className="h-4 w-4 text-primary" />
-              </div>
               <div className="min-w-0">
                 <p className="text-[15px] font-semibold text-foreground">
                   Ride complete
@@ -1239,7 +1444,7 @@ export default function Dashboard() {
               </div>
               <Badge
                 variant="outline"
-                className="ml-auto shrink-0 capitalize"
+                className={`ml-auto shrink-0 capitalize ${statusBadgeStyles.completed}`}
               >
                 completed
               </Badge>
@@ -1252,8 +1457,15 @@ export default function Dashboard() {
               rideLabel={`${selectedVehicle.label} · ${rideFareLabel}`}
             />
 
-            {bookingFeedback?.reviewedAt || reviewDismissed ? (
-              <div className="mt-4 flex items-center gap-2 rounded-2xl border border-border bg-secondary/40 px-4 py-3">
+            {!bookingDriverId ? (
+              <div className="mt-4 flex min-w-0 items-center gap-2.5 rounded-2xl border border-border/70 bg-muted/25 px-3.5 py-3">
+                <Star className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <p className="text-[12.5px] text-muted-foreground">
+                  This ride has no assigned driver to review.
+                </p>
+              </div>
+            ) : bookingFeedback?.reviewedAt || reviewDismissed ? (
+              <div className="mt-4 flex min-w-0 items-center gap-2.5 rounded-2xl border border-border/70 bg-muted/25 px-3.5 py-3">
                 <Star className="h-4 w-4 shrink-0 text-amber-500 fill-amber-500" />
                 <p className="text-[12.5px] text-muted-foreground">
                   {bookingFeedback?.reviewedAt
@@ -1262,52 +1474,61 @@ export default function Dashboard() {
                 </p>
               </div>
             ) : (
-              <div className="mt-4 rounded-2xl border border-border bg-secondary/40 px-4 py-4">
+              <div className="mt-4 rounded-2xl border border-border/70 bg-muted/25 px-4 py-4">
                 <p className="text-[12.5px] font-semibold text-foreground">
                   How was your driver?
                 </p>
-                <div className="mt-2 flex items-center gap-1.5">
+                <div
+                  className="mt-2 grid grid-cols-5 items-center gap-1 sm:flex sm:flex-wrap sm:items-center sm:gap-1.5"
+                  role="radiogroup"
+                  aria-label="Rate your driver from 1 to 5 stars"
+                >
                   {[1, 2, 3, 4, 5].map((n) => (
-                    <button
+                    <label
                       key={n}
-                      type="button"
-                      aria-label={`${n} star${n > 1 ? "s" : ""}`}
-                      onClick={() => setReviewRating(n)}
-                       className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${reviewRating >= n
-                          ? "text-amber-500"
-                          : "text-muted-foreground/40 hover:text-amber-500/60"
-                        }`}
+                      className={`flex h-11 w-full min-w-0 cursor-pointer items-center justify-center rounded-full border border-transparent text-muted-foreground/45 outline-none transition-[color,background-color,border-color,transform] duration-150 hover:border-amber-500/20 hover:bg-amber-500/[0.06] hover:text-amber-500/70 has-[:focus-visible]:border-ring has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/60 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-card motion-safe:hover:-translate-y-px motion-safe:active:scale-95 motion-reduce:transition-none sm:w-11 sm:flex-none ${reviewRating >= n ? "text-amber-500" : ""}`}
                     >
-                      <Star
-                        className={`h-5 w-5 ${reviewRating >= n ? "fill-amber-500" : ""}`}
+                      <input
+                        type="radio"
+                        name={`${pfx}driver-rating`}
+                        value={n}
+                        checked={reviewRating === n}
+                        onChange={() => setReviewRating(n)}
+                        aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                        className="sr-only"
                       />
-                    </button>
+                      <Star
+                        aria-hidden="true"
+                        className={`h-5 w-5 transition-[fill] duration-150 motion-reduce:transition-none ${reviewRating >= n ? "fill-amber-500" : ""}`}
+                      />
+                    </label>
                   ))}
                   {reviewRating > 0 && (
-                    <span className="ml-1 text-[12px] font-semibold text-foreground">
+                    <span className="col-span-5 mt-1 text-right text-[12px] font-semibold text-foreground sm:ml-1 sm:mt-0 sm:inline">
                       {reviewRating}/5
                     </span>
                   )}
                 </div>
                 <Textarea
                   id={`${pfx}review-comment`}
+                  aria-label="Review comment"
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
                   placeholder="Leave a comment (optional)…"
-                  className="mt-3 min-h-[70px]"
+                  className="mt-3 min-h-[70px] text-base lg:text-sm"
                   maxLength={500}
                 />
                 {reviewError && (
-                  <p className="mt-2 text-[12px] text-destructive">
+                  <p role="alert" className="mt-2 text-[12px] text-destructive">
                     {reviewError}
                   </p>
                 )}
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
                     id={`${pfx}submit-review-btn`}
                     size="sm"
-                     className="min-h-11 font-semibold sm:min-h-8"
+                     className="min-h-11 font-semibold lg:min-h-8"
                     disabled={reviewBusy || reviewRating < 1}
                     onClick={() => void handleSubmitReview()}
                   >
@@ -1317,7 +1538,7 @@ export default function Dashboard() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                     className="min-h-11 font-semibold text-muted-foreground sm:min-h-8"
+                     className="min-h-11 font-semibold text-muted-foreground lg:min-h-8"
                     disabled={reviewBusy}
                     onClick={() => setReviewDismissed(true)}
                   >
@@ -1347,8 +1568,10 @@ export default function Dashboard() {
             className={panelClass}
           >
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive/12">
-                <X className="h-4 w-4 text-destructive" />
+              <div
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${statusIconStyles.cancelled}`}
+              >
+                <X className="h-4 w-4" />
               </div>
               <div className="min-w-0">
                 <p className="text-[15px] font-semibold text-foreground">
@@ -1368,13 +1591,15 @@ export default function Dashboard() {
                   key={reason.value}
                   type="button"
                   onClick={() => setCancelReason(reason.value)}
-                  className={`flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition-colors ${cancelReason === reason.value
-                      ? "border-destructive/40 bg-destructive/8"
-                      : "border-border bg-secondary/40 hover:bg-secondary"
+                  aria-pressed={cancelReason === reason.value}
+                  className={`flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left outline-none transition-[color,background-color,border-color,box-shadow,transform] focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-card motion-safe:active:scale-[0.99] motion-reduce:transition-none ${cancelReason === reason.value
+                      ? "border-destructive/35 bg-destructive/[0.07]"
+                      : "border-border/70 bg-muted/25 hover:border-ring/30 hover:bg-muted/45"
                     }`}
                 >
                   <span
-                    className={`h-3.5 w-3.5 shrink-0 rounded-full border transition-colors ${cancelReason === reason.value
+                    aria-hidden="true"
+                    className={`h-3.5 w-3.5 shrink-0 rounded-full border transition-colors motion-reduce:transition-none ${cancelReason === reason.value
                         ? "border-destructive bg-destructive"
                         : "border-muted-foreground/40"
                       }`}
@@ -1387,7 +1612,7 @@ export default function Dashboard() {
             </div>
 
             {cancelError && (
-              <p className="mt-3 text-[12px] text-destructive">
+              <p role="alert" className="mt-3 break-words text-[12px] text-destructive [overflow-wrap:anywhere]">
                 {cancelError}
               </p>
             )}
@@ -1520,7 +1745,7 @@ export default function Dashboard() {
       </aside>
 
       {/* ── Main area ─────────────────────────────────────────────── */}
-      <div className="relative flex min-h-0 flex-1 flex-col pb-[calc(60px+env(safe-area-inset-bottom))] lg:min-h-0 lg:ml-[220px] lg:pb-0">
+      <div className="relative flex min-h-0 flex-1 flex-col pb-[calc(3rem+max(0.75rem,env(safe-area-inset-bottom)))] lg:min-h-0 lg:ml-[220px] lg:pb-0">
         {/* Top bar (desktop) — only shown on non-map tabs */}
         {activeTab !== "home" && (
           <header className="hidden h-[64px] items-center justify-between border-b border-border px-8 shrink-0 lg:flex">
@@ -1531,16 +1756,14 @@ export default function Dashboard() {
               </h1>
             </div>
             <div className="flex items-center gap-2">
-              <span className="rounded-full bg-drio-success/15 px-3 py-1 text-[11px] font-semibold text-drio-success">
-                {socketConnected ? "● Realtime on" : "● Online"}
-              </span>
+               <RealtimeBadge connected={socketConnected} />
             </div>
           </header>
         )}
 
         {/* Top bar (mobile) — hidden on Home tab; map has floating logo instead */}
         {activeTab !== "home" && (
-          <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
+          <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur max-lg:pl-[calc(1rem+env(safe-area-inset-left))] max-lg:pr-[calc(1rem+env(safe-area-inset-right))] [@media(max-height:600px)]:h-[calc(3rem+env(safe-area-inset-top))] lg:hidden">
             <div className="flex items-center gap-2.5 min-w-0">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
                 <Logo className="!text-[1rem]" />
@@ -1554,16 +1777,14 @@ export default function Dashboard() {
               <AccountSwitcher compact placement="bottom">
                 <span />
               </AccountSwitcher>
-              <span className="rounded-full bg-drio-success/15 px-2.5 py-1 text-[10px] font-semibold text-drio-success">
-                {socketConnected ? "● Realtime on" : "● Online"}
-              </span>
+               <RealtimeBadge connected={socketConnected} compact />
             </div>
           </header>
         )}
 
         {activeTab === "home" && (
-          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row lg:overflow-hidden">
-            <div className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background px-4 pt-[env(safe-area-inset-top)] lg:hidden">
+          <div className="group/booking-sheet relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row lg:overflow-hidden">
+            <div className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background px-4 pt-[env(safe-area-inset-top)] max-lg:pl-[calc(1rem+env(safe-area-inset-left))] max-lg:pr-[calc(1rem+env(safe-area-inset-right))] [@media(max-height:600px)]:h-[calc(3rem+env(safe-area-inset-top))] lg:hidden">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
                 <Logo className="!text-[1rem]" />
               </span>
@@ -1571,12 +1792,10 @@ export default function Dashboard() {
                 <AccountSwitcher compact placement="bottom">
                   <span />
                 </AccountSwitcher>
-                <span className="rounded-full bg-drio-success/15 px-2.5 py-1 text-[10px] font-semibold text-drio-success">
-                  {socketConnected ? "● Live" : "● Online"}
-                </span>
+                 <RealtimeBadge connected={socketConnected} compact />
               </div>
             </div>
-            <div className="relative h-[clamp(8rem,50svh,28rem)] w-full shrink-0 overflow-hidden bg-drio-deep lg:relative lg:inset-auto lg:z-0 lg:h-auto lg:w-auto lg:flex-1 lg:order-2">
+            <div className="relative h-[clamp(8rem,50svh,28rem)] w-full shrink-0 overflow-hidden bg-drio-deep max-lg:group-has-[:is(input,textarea):focus]/booking-sheet:h-24 max-lg:[@media(max-height:600px)]:h-28 lg:relative lg:inset-auto lg:z-0 lg:h-auto lg:w-auto lg:flex-1 lg:order-2">
               <Map
                 className="h-full w-full"
                 from={fromLocation}
@@ -1598,10 +1817,19 @@ export default function Dashboard() {
                 {renderBookingSurface("desktop")}
               </div>
             </div>
-            <div className="absolute inset-x-[380px] bottom-0 z-10 hidden max-h-[55%] overflow-y-auto lg:block">
+            <div className="absolute inset-x-[380px] bottom-0 z-10 hidden max-h-[55%] overflow-y-auto overscroll-contain lg:block">
               {renderRideStatusSurface("desktop")}
             </div>
-            <div className="relative z-20 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 lg:hidden">
+            <div
+              ref={mobileSheetRef}
+              className="relative z-20 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 lg:hidden"
+              onFocusCapture={(event) => {
+                const field = event.target;
+                if (field instanceof HTMLElement && field.matches("input, textarea")) {
+                  revealMobileField(field);
+                }
+              }}
+            >
               <div className="w-full overflow-visible rounded-2xl border border-border bg-card shadow-2xl">
                 <div className="flex justify-center pt-3 pb-1">
                   <div className="h-1 w-10 rounded-full bg-border" />
@@ -1622,17 +1850,26 @@ export default function Dashboard() {
 
         {/* ── HISTORY TAB ───────────────────────────────────────── */}
         {activeTab === "history" && (
-          <div className="flex flex-1 flex-col min-h-0">
-            <div className="flex-1 overflow-y-auto p-4 lg:p-8">
-              <div className="mx-auto w-full min-w-0 max-w-3xl space-y-6">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div
+              ref={historyScrollRef}
+              className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-4 max-lg:pl-[calc(1rem+env(safe-area-inset-left))] max-lg:pr-[calc(1rem+env(safe-area-inset-right))] lg:p-8"
+              onFocusCapture={(event) => {
+                const field = event.target;
+                if (field instanceof HTMLElement && field.matches("input, textarea")) {
+                  revealHistoryField(field);
+                }
+              }}
+            >
+              <div className="mx-auto w-full min-w-0 max-w-3xl space-y-4 lg:space-y-6">
                 <AnimatePresence mode="wait">
                   {historyStatus === "error" ? (
                     <motion.div
                       {...motionStateProps({ variants: page, reduced })}
                       key="error"
-                      className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-destructive/30 bg-card px-6 py-16 text-center"
+                      className="flex flex-col items-center justify-center rounded-3xl border border-destructive/25 bg-card px-6 py-8 text-center lg:border-dashed lg:border-destructive/30 lg:py-16"
                     >
-                      <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+                      <div className="mb-4 hidden h-14 w-14 items-center justify-center rounded-full bg-destructive/10 lg:flex">
                         <History className="h-7 w-7 text-destructive" />
                       </div>
                       <p className="text-[15px] font-semibold text-destructive">
@@ -1654,9 +1891,9 @@ export default function Dashboard() {
                     <motion.div
                       {...motionStateProps({ variants: page, reduced })}
                       key="empty"
-                      className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-card px-6 py-16 text-center"
+                      className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card px-6 py-8 text-center lg:border-dashed lg:py-16"
                     >
-                      <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                      <div className="mb-4 hidden h-14 w-14 items-center justify-center rounded-full bg-primary/10 lg:flex">
                         <History className="h-7 w-7 text-primary" />
                       </div>
                       <p className="text-[15px] font-semibold text-foreground">
@@ -1682,7 +1919,7 @@ export default function Dashboard() {
                     >
                       {historyGroups.map((group, idx) => (
                         <div key={idx}>
-                          <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-2 px-1">
+                           <p className="mb-2.5 px-0.5 text-[11px] font-medium normal-case tracking-normal text-muted-foreground sm:mb-2 sm:px-1 sm:text-[10px] sm:font-semibold sm:uppercase sm:tracking-widest">
                             {group.dateLabel}
                           </p>
                           <div className="space-y-2">
@@ -1690,42 +1927,188 @@ export default function Dashboard() {
                               <div
                                 key={booking._id}
                                 title={`Booking ${booking._id}`}
-                                className="rounded-2xl border border-border bg-card hover:bg-secondary/30 active:scale-[0.99] transition-all overflow-hidden"
-                              >
-                                <div className="flex flex-col items-stretch gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:gap-3">
-                                  {/* Car icon */}
-                                  <div className="h-10 w-10 rounded-xl bg-secondary flex items-center justify-center shrink-0 border border-border">
-                                    <Car className="h-5 w-5 text-muted-foreground/50" />
-                                  </div>
+                                 className="w-full max-w-full min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-card transition-[border-color,box-shadow] duration-200 hover:border-ring/25 hover:shadow-sm motion-reduce:transition-none"
+                               >
+                                 <div className="flex min-w-0 flex-col items-stretch gap-2.5 px-3.5 py-3 sm:gap-3 sm:px-4 sm:py-3.5 lg:flex-row lg:items-center lg:gap-3">
+                                   <div
+                                     aria-hidden="true"
+                                     className="hidden w-10 shrink-0 self-stretch py-1 lg:flex lg:flex-col lg:items-center"
+                                   >
+                                     <span className="mt-0.5 h-2 w-2 rounded-full bg-primary ring-4 ring-primary/10" />
+                                     <span className="my-1 w-px min-h-5 flex-1 bg-border" />
+                                     <MapPin className="h-3.5 w-3.5 text-drio-blue" />
+                                   </div>
 
                                   {/* Route */}
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
-                                      <p className="text-[13px] text-foreground font-medium leading-tight truncate">
-                                        {formatPlace(booking.source)}
+                                     <div className="mb-1 grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-2 sm:flex">
+                                       <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:hidden">
+                                         From
+                                       </span>
+                                       <span className="hidden h-2 w-2 shrink-0 rounded-full bg-primary sm:block lg:hidden" />
+                                       <p className="min-w-0 truncate text-[13.5px] font-semibold leading-snug text-foreground sm:text-[13px] sm:font-medium sm:leading-tight">
+                                         {formatPlace(booking.source)}
+                                       </p>
+                                     </div>
+                                     <div className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-2 sm:flex">
+                                       <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:hidden">
+                                         To
+                                       </span>
+                                       <MapPin className="hidden h-2.5 w-2.5 shrink-0 text-drio-blue sm:block lg:hidden" />
+                                       <p className="min-w-0 truncate text-[12.5px] leading-snug text-muted-foreground sm:text-[12px] sm:leading-tight">
+                                         {formatPlace(booking.destination)}
+                                       </p>
+                                     </div>
+                                    {booking.driverInfo && (
+                                         <p className="mt-1.5 flex min-w-0 items-center gap-1 text-[11.5px] text-muted-foreground">
+                                          <span className="min-w-0 truncate font-medium text-foreground/80">{booking.driverInfo.name ?? "Driver"}</span>
+                                        {booking.driverRating?.average != null && booking.driverRating.count > 0 ? (
+                                          <>
+                                            <span>·</span>
+                                             <Star aria-hidden="true" className="h-3 w-3 fill-amber-500 text-amber-500" />
+                                            <span className="font-semibold text-foreground">
+                                              {booking.driverRating.average.toFixed(1)}
+                                            </span>
+                                          </>
+                                        ) : null}
                                       </p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <MapPin className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
-                                      <p className="text-[12px] text-muted-foreground leading-tight truncate">
-                                        {formatPlace(booking.destination)}
-                                      </p>
-                                    </div>
+                                    )}
                                   </div>
 
-                                  <div className="flex shrink-0 flex-col items-end gap-1.5">
-                                    <span className="text-[12px] font-semibold text-foreground">
+                                   <div className="flex w-full min-w-0 max-w-full shrink-0 flex-col items-end gap-1.5 max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:items-center max-sm:gap-2 sm:w-auto">
+                                     <span className="min-w-0 break-words text-[14px] font-semibold leading-tight tabular-nums text-foreground max-sm:whitespace-normal sm:whitespace-nowrap sm:text-[12px]">
                                       {formatFare(booking.fare)}
                                     </span>
                                     <Badge
                                       variant="outline"
-                                      className={`text-[10px] capitalize ${statusBadgeStyles[booking.status]}`}
+                                       className={`max-w-full whitespace-nowrap text-[10px] font-medium capitalize ${statusBadgeStyles[booking.status]}`}
                                     >
                                       {booking.status.replace("_", " ")}
                                     </Badge>
                                   </div>
                                 </div>
+
+                                {booking.status === "completed" && booking.driver && (
+                                   <div className="min-w-0 max-w-full border-t border-border/70 bg-muted/20 px-3 py-2.5 sm:px-4 sm:py-3">
+                                    {booking.feedback?.reviewedAt ? (
+                                      <div>
+                                        <div className="flex items-center justify-between gap-3">
+                                           <div
+                                             role="img"
+                                             aria-label={`${booking.feedback.rating ?? 0} out of 5 stars`}
+                                             className="flex items-center gap-0.5"
+                                           >
+                                             {[1, 2, 3, 4, 5].map((rating) => (
+                                               <Star
+                                                 key={rating}
+                                                 aria-hidden="true"
+                                                 className={`h-4 w-4 ${(booking.feedback.rating ?? 0) >= rating ? "fill-amber-500 text-amber-500" : "text-muted-foreground/30"}`}
+                                               />
+                                             ))}
+                                           </div>
+                                          <span className="text-[11.5px] font-medium text-muted-foreground">
+                                            Your review
+                                          </span>
+                                        </div>
+                                        {booking.feedback.comment && (
+                                          <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[12px] leading-relaxed text-muted-foreground">
+                                            {booking.feedback.comment}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ) : historyReviewId === booking._id ? (
+                                      <motion.div
+                                        initial={reduced ? false : { opacity: 0, y: 4 }}
+                                        animate={reduced ? undefined : { opacity: 1, y: 0 }}
+                                        transition={{ duration: reduced ? 0 : 0.18, ease: "easeOut" }}
+                                        className="min-w-0"
+                                      >
+                                         <p className="break-words text-[12.5px] font-semibold text-foreground">
+                                           Rate your ride
+                                         </p>
+                                        <div
+                                          className="mt-2 grid grid-cols-5 items-center gap-1 sm:flex sm:flex-wrap sm:items-center"
+                                          role="radiogroup"
+                                          aria-label="Rate this ride from 1 to 5 stars"
+                                        >
+                                          {[1, 2, 3, 4, 5].map((rating) => (
+                                            <label
+                                              key={rating}
+                                              className={`flex h-11 w-full min-w-0 cursor-pointer items-center justify-center rounded-full border border-transparent text-muted-foreground/45 outline-none transition-[color,background-color,border-color,transform] duration-150 hover:border-amber-500/20 hover:bg-amber-500/[0.06] hover:text-amber-500/70 has-[:focus-visible]:border-ring has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/60 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-card motion-safe:hover:-translate-y-px motion-safe:active:scale-95 motion-reduce:transition-none sm:h-10 sm:w-10 sm:flex-none ${historyReviewRating >= rating ? "text-amber-500" : ""}`}
+                                            >
+                                              <input
+                                                type="radio"
+                                                name={`history-review-rating-${booking._id}`}
+                                                value={rating}
+                                                checked={historyReviewRating === rating}
+                                                onChange={() => setHistoryReviewRating(rating)}
+                                                aria-label={`${rating} star${rating > 1 ? "s" : ""}`}
+                                                autoFocus={rating === 1}
+                                                className="sr-only"
+                                              />
+                                              <Star
+                                                aria-hidden="true"
+                                                className={`h-5 w-5 transition-[fill] duration-150 motion-reduce:transition-none ${historyReviewRating >= rating ? "fill-amber-500" : ""}`}
+                                              />
+                                            </label>
+                                          ))}
+                                          {historyReviewRating > 0 && (
+                                            <span className="col-span-5 mt-1 text-right text-[12px] font-semibold text-foreground sm:ml-1 sm:mt-0 sm:inline">
+                                              {historyReviewRating}/5
+                                            </span>
+                                          )}
+                                        </div>
+                                        <Textarea
+                                          id={`history-review-${booking._id}`}
+                                          aria-label="Review comment"
+                                          value={historyReviewComment}
+                                          onChange={(event) => setHistoryReviewComment(event.target.value)}
+                                          placeholder="Leave a comment (optional)…"
+                                          className="mt-2 min-h-[70px] text-base lg:text-sm"
+                                          maxLength={500}
+                                        />
+                                        {historyReviewError && (
+                                           <p role="alert" className="mt-2 break-words text-[12px] text-destructive [overflow-wrap:anywhere]">
+                                            {historyReviewError}
+                                          </p>
+                                        )}
+                                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            className="min-h-11 font-semibold lg:min-h-8"
+                                            disabled={historyReviewBusy || historyReviewRating < 1}
+                                            onClick={() => void handleSubmitHistoryReview(booking)}
+                                          >
+                                            {historyReviewBusy ? "Submitting…" : "Submit review"}
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="min-h-11 font-semibold text-muted-foreground lg:min-h-8"
+                                            disabled={historyReviewBusy}
+                                            onClick={closeHistoryReview}
+                                          >
+                                            Cancel
+                                          </Button>
+                                        </div>
+                                      </motion.div>
+                                    ) : (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="min-h-11 w-full font-semibold lg:min-h-8"
+                                        disabled={historyReviewId !== null || historyReviewBusy}
+                                        onClick={() => openHistoryReview(booking)}
+                                      >
+                                         <Star aria-hidden="true" className="h-4 w-4 text-amber-500" />
+                                        Rate this ride
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1736,10 +2119,15 @@ export default function Dashboard() {
                     <motion.div
                       {...motionStateProps({ variants: page, reduced })}
                       key="loading"
-                      className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-card px-6 py-16 text-center"
+                      className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card px-6 py-8 text-center lg:py-16"
                     >
-                      <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-                        <History className="h-7 w-7 text-primary animate-pulse" />
+                      <div className="mb-4 flex w-28 flex-col gap-2 lg:hidden" aria-hidden="true">
+                        <span className="h-1.5 w-full animate-pulse rounded-full bg-primary/25 motion-reduce:animate-none" />
+                        <span className="h-1.5 w-4/5 animate-pulse rounded-full bg-border motion-reduce:animate-none" />
+                        <span className="h-1.5 w-3/5 animate-pulse rounded-full bg-border motion-reduce:animate-none" />
+                      </div>
+                      <div className="mb-4 hidden h-14 w-14 items-center justify-center rounded-full bg-primary/10 lg:flex">
+                        <History className="h-7 w-7 text-primary animate-pulse motion-reduce:animate-none" />
                       </div>
                       <p className="text-[15px] font-semibold text-foreground">
                         Loading your trips…

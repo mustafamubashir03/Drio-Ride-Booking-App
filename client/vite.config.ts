@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "API_PROXY_TARGET")
-  const apiProxyTarget = env.API_PROXY_TARGET || 'http://localhost:3000'
+  const apiProxyTarget = env.API_PROXY_TARGET
 
   return {
     plugins: [react(), tailwindcss()],
@@ -19,12 +19,16 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
-      proxy: {
-        '/api': {
-          target: apiProxyTarget,
-          changeOrigin: true,
-        },
-      },
+      ...(apiProxyTarget
+        ? {
+            proxy: {
+              '/api': {
+                target: apiProxyTarget,
+                changeOrigin: true,
+              },
+            },
+          }
+        : {}),
     },
   }
 })

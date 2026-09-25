@@ -1,3 +1,5 @@
+import { apiFetch } from "./runtime-config";
+
 export type BookingStatus = 'pending' | 'confirmed' | 'arriving' | 'arrived' | 'in_progress' | 'completed' | 'cancelled';
 
 export type BookingCoordinates = {
@@ -5,6 +7,11 @@ export type BookingCoordinates = {
     displayName?: string;
     latitude: number;
     longitude: number;
+};
+
+export type DriverRatingSummary = {
+    average: number | null;
+    count: number;
 };
 
 export type BookingDriverInfo = {
@@ -39,6 +46,7 @@ export type BookingRecord = {
     destination: BookingCoordinates;
     driver: string | null;
     driverInfo: BookingDriverInfo;
+    driverRating: DriverRatingSummary | null;
     driverLocation: BookingDriverLocation;
     cancelledAt: string | null;
     cancelledBy: BookingCancelledBy;
@@ -57,7 +65,7 @@ export type CancelBookingResult = {
 };
 
 export async function fetchBookings(): Promise<BookingRecord[]> {
-    const response = await fetch('/api/v1/passenger/bookings', {
+    const response = await apiFetch('/api/v1/passenger/bookings', {
         headers: { 'Accept': 'application/json' },
     });
 
@@ -85,7 +93,7 @@ export async function fetchBookings(): Promise<BookingRecord[]> {
 }
 
 export async function cancelBooking(bookingId: string, reason?: string): Promise<CancelBookingResult> {
-    const response = await fetch(`/api/v1/passenger/bookings/${encodeURIComponent(bookingId)}/cancel`, {
+    const response = await apiFetch(`/api/v1/passenger/bookings/${encodeURIComponent(bookingId)}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: reason ?? undefined }),
@@ -112,7 +120,7 @@ export type ReviewBookingResult = {
 };
 
 export async function submitBookingReview(bookingId: string, rating: number, comment?: string): Promise<ReviewBookingResult> {
-    const response = await fetch(`/api/v1/passenger/bookings/${encodeURIComponent(bookingId)}/review`, {
+    const response = await apiFetch(`/api/v1/passenger/bookings/${encodeURIComponent(bookingId)}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rating, comment: comment ?? null }),

@@ -16,6 +16,7 @@ import {
   fetchDriverActiveRide,
   fetchDriverAvailability,
   fetchDriverEarnings,
+  fetchDriverRating,
   setDriverAvailability,
   transitionDriverRide,
   DRIVER_RIDE_STATUS_LABEL,
@@ -24,6 +25,7 @@ import {
   type DriverRide,
   type DriverRideAction,
 } from "@/lib/driver-api";
+import type { DriverRatingSummary } from "@/lib/bookings-api";
 import type { SelectedLocation } from "@/lib/places-api";
 import {
   formatCoordinates,
@@ -41,6 +43,7 @@ import {
   Power,
   Radio,
   RefreshCcw,
+  Star,
   Warehouse,
 } from "lucide-react";
 
@@ -63,14 +66,14 @@ function actionForStatus(status: DriverRide["status"]): RideAction {
   }
 }
 
-const statusBadgeStyles: Record<string, string> = {
-  pending: "bg-amber-500/15 text-amber-500 border-amber-500/25",
-  confirmed: "bg-drio-success/15 text-drio-success border-drio-success/25",
-  arriving: "bg-amber-500/15 text-amber-500 border-amber-500/25",
-  arrived: "bg-primary/15 text-primary border-primary/25",
-  in_progress: "bg-drio-success/15 text-drio-success border-drio-success/25",
-  completed: "bg-primary/15 text-primary border-primary/25",
-  cancelled: "bg-muted/40 text-muted-foreground border-border",
+const statusBadgeStyles: Record<DriverRide["status"], string> = {
+  pending: "border-amber-500/25 bg-amber-500/10 text-amber-500",
+  confirmed: "border-drio-success/25 bg-drio-success/10 text-drio-success",
+  arriving: "border-drio-blue/25 bg-drio-blue/10 text-drio-blue",
+  arrived: "border-primary/25 bg-primary/10 text-primary",
+  in_progress: "border-drio-success/25 bg-drio-success/10 text-drio-success",
+  completed: "border-drio-success/25 bg-drio-success/10 text-drio-success",
+  cancelled: "border-destructive/25 bg-destructive/10 text-destructive",
 };
 
 function toLocation(place: DriverRide["source"]): SelectedLocation {
@@ -98,6 +101,8 @@ export default function DriverHome() {
 
   const [completedRide, setCompletedRide] = useState<DriverRide | null>(null);
   const [summary, setSummary] = useState<DriverEarningsSummary | null>(null);
+  const [rating, setRating] = useState<DriverRatingSummary | null>(null);
+  const [ratingStatus, setRatingStatus] = useState<"loading" | "success" | "error">("loading");
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -120,6 +125,7 @@ export default function DriverHome() {
   const startLocation = location.start;
   const availabilityLoadSeq = useRef(0);
   const activeRideLoadSeq = useRef(0);
+  const ratingLoadSeq = useRef(0);
 
   const from: SelectedLocation | null = useMemo(
     () => (activeRide ? toLocation(activeRide.source) : null),
@@ -235,10 +241,26 @@ export default function DriverHome() {
     }
   };
 
+  const loadRating = async (background = false) => {
+    const seq = ++ratingLoadSeq.current;
+    if (!background) setRatingStatus("loading");
+    try {
+      const value = await fetchDriverRating();
+      if (seq !== ratingLoadSeq.current) return;
+      setRating(value);
+      setRatingStatus("success");
+    } catch {
+      if (seq !== ratingLoadSeq.current) return;
+      if (!background) setRating(null);
+      setRatingStatus("error");
+    }
+  };
+
   useEffect(() => {
     void loadAvailability();
     void loadActiveRide();
     void loadSummary();
+    void loadRating();
     // GPS acquisition starts for online dispatch and remains active whenever
     // an accepted ride needs navigation, even if availability changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -256,13 +278,31 @@ export default function DriverHome() {
   // Returning to the tab is the moment the ride card most often goes stale
   // (a ride may have been accepted/advanced from another session or tab).
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        setTimeout(() => void loadActiveRide(true), 0);
-      }
+    let refreshTimer: number | undefined;
+    const refresh = () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        void loadActiveRide(true);
+        void loadSummary();
+        void loadRating(true);
+      }, 0);
     };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const onFocus = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const ratingInterval = window.setInterval(() => void loadRating(true), 30000);
+
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      window.clearInterval(ratingInterval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   const handleToggleAvailability = async () => {
@@ -302,6 +342,7 @@ export default function DriverHome() {
         setActiveRide(null);
         setCompletedRide(updated);
         void loadSummary();
+        void loadRating(true);
       } else if (updated.status === "cancelled") {
         setActiveRide(null);
         setCompletedRide(null);
@@ -357,7 +398,7 @@ export default function DriverHome() {
                 key="loading"
                 className="rounded-xl border border-border bg-card px-4 py-8 text-center"
               >
-                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary" />
+                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary motion-reduce:animate-none" />
                 <p className="mt-3 text-[13px] text-muted-foreground">
                   Loading your driver status…
                 </p>
@@ -384,7 +425,7 @@ export default function DriverHome() {
                 className="space-y-5"
               >
               {/* Online/offline */}
-              <div className="rounded-2xl border border-border bg-card p-4">
+              <div className="rounded-2xl border border-border bg-card p-4 transition-colors duration-200">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[15px] font-semibold text-foreground">
@@ -397,14 +438,14 @@ export default function DriverHome() {
                     </p>
                   </div>
                   <span
-                    className={`mt-0.5 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${online
-                        ? "bg-drio-success/15 text-drio-success"
-                        : "bg-amber-500/15 text-amber-500"
+                    className={`mt-0.5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${online
+                        ? "border-drio-success/25 bg-drio-success/10 text-drio-success"
+                        : "border-amber-500/25 bg-amber-500/10 text-amber-500"
                       }`}
                   >
                     <span
                       className={`inline-block h-1.5 w-1.5 rounded-full ${online
-                          ? "bg-drio-success animate-pulse"
+                          ? "bg-drio-success animate-pulse motion-reduce:animate-none"
                           : "bg-amber-500/80"
                         }`}
                     />
@@ -413,7 +454,7 @@ export default function DriverHome() {
                 </div>
                 <Button
                   variant={online ? "destructive" : "default"}
-                  className="mt-4 w-full hover:scale-[1.01]"
+                  className="mt-4 w-full hover:scale-[1.01] motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
                   onClick={() => void handleToggleAvailability()}
                   disabled={availabilitySubmitting}
                 >
@@ -425,40 +466,47 @@ export default function DriverHome() {
                       : "Go online"}
                 </Button>
                 {availabilityError && (
-                  <p className="mt-2 text-[12px] text-destructive">{availabilityError}</p>
+                  <p className="mt-2 rounded-lg bg-destructive/8 px-2.5 py-1.5 text-[12px] text-destructive">{availabilityError}</p>
                 )}
               </div>
 
               {/* Location readout */}
-              <div className="rounded-2xl border border-border bg-card p-4">
+              <div className="rounded-2xl border border-border bg-card p-4 transition-colors duration-200">
                 <div className="flex items-center gap-2">
                   <LocateFixed className="h-4 w-4 text-drio-blue" />
                   <p className="text-[13px] font-semibold text-foreground">Live location</p>
                 </div>
-                <div className="mt-3 flex items-center justify-between">
-                  <p className="text-[12px] text-muted-foreground">Tracking</p>
-                  <p className="text-[13px] font-semibold text-foreground">
-                    {isTracking
-                      ? `● Active${location.accuracy ? ` · ±${Math.round(location.accuracy)} m` : ""}`
-                      : "Idle"}
-                  </p>
-                </div>
-                <div className="mt-1 flex items-center justify-between">
-                  <p className="text-[12px] text-muted-foreground">Position</p>
-                  <p className="max-w-[220px] truncate text-[12px] font-medium text-foreground">
-                    {location.latitude !== null && location.longitude !== null
-                      ? formatCoordinates(location.latitude, location.longitude)
-                      : "—"}
-                  </p>
+                <div className="mt-3 space-y-1 rounded-xl border border-border bg-muted/25 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[12px] text-muted-foreground">Tracking</p>
+                    <p className="text-[12px] font-semibold tabular-nums text-foreground">
+                      {isTracking ? (
+                        <>
+                          <span className="text-drio-success">●</span> Active
+                          {location.accuracy ? ` · ±${Math.round(location.accuracy)} m` : ""}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">Idle</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[12px] text-muted-foreground">Position</p>
+                    <p className="max-w-[220px] truncate text-right text-[12px] font-medium tabular-nums text-foreground">
+                      {location.latitude !== null && location.longitude !== null
+                        ? formatCoordinates(location.latitude, location.longitude)
+                        : "—"}
+                    </p>
+                  </div>
                 </div>
                 {!isTracking &&
                   (location.error ? (
-                    <p className="mt-2 text-[12px] text-destructive">{location.error}</p>
+                    <p className="mt-2 rounded-lg bg-destructive/8 px-2.5 py-1.5 text-[12px] text-destructive">{location.error}</p>
                   ) : (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="mt-3 w-full hover:scale-[1.01]"
+                      className="mt-3 w-full hover:scale-[1.01] motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
                       onClick={location.start}
                       disabled={location.permission === "unsupported"}
                     >
@@ -468,10 +516,45 @@ export default function DriverHome() {
                   ))}
               </div>
 
-              <p className="flex items-start gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground">
+              <div className="rounded-2xl border border-border bg-card p-4 transition-colors duration-200">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10">
+                      <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold text-foreground">Driver rating</p>
+                      <p className="text-[11.5px] text-muted-foreground">
+                        {ratingStatus === "loading"
+                          ? "Loading rating…"
+                          : ratingStatus === "error"
+                            ? "Could not load your rating"
+                            : rating?.count
+                              ? `Based on ${rating.count} ${rating.count === 1 ? "review" : "reviews"}`
+                              : "No passenger ratings yet"}
+                      </p>
+                    </div>
+                  </div>
+                  {ratingStatus === "error" ? (
+                      <button
+                        type="button"
+                        onClick={() => void loadRating()}
+                        className="-mx-1 shrink-0 rounded-md px-1 py-0.5 text-[11.5px] font-semibold text-primary transition-colors hover:bg-primary/10 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                      >
+                      Retry
+                    </button>
+                  ) : (
+                    <p className="shrink-0 text-[22px] font-bold leading-none tracking-tight tabular-nums text-foreground">
+                      {ratingStatus === "success" && rating?.average != null ? rating.average.toFixed(1) : "—"}
+                      <span className="ml-1 text-[11px] font-medium text-muted-foreground">/ 5</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <p className="flex items-start gap-2 rounded-xl border border-dashed border-border/80 bg-muted/25 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground transition-colors duration-200">
                 <CircleDotDashed className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                Dispatch and ride-request matching arrive in a future milestone.
-                Accepted rides will appear here automatically.
+                 Go online to receive nearby ride requests. Accepted rides appear here automatically.
               </p>
 
               {activeError && (
@@ -488,22 +571,22 @@ export default function DriverHome() {
                     key="active"
                     className="space-y-4"
                   >
-                    <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                       Active ride
                     </p>
-                  <div className="rounded-2xl border border-border bg-card p-4">
+                  <div className="rounded-2xl border border-border bg-card p-4 transition-colors duration-200">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[13px] font-semibold text-foreground">Ride request</p>
                       <Badge
                         variant="outline"
-                        className={statusBadgeStyles[activeRide.status]}
+                         className={`font-semibold ${statusBadgeStyles[activeRide.status]}`}
                       >
                         {DRIVER_RIDE_STATUS_LABEL[activeRide.status]}
                       </Badge>
                     </div>
 
                     {activeRide.passenger && (
-                      <div className="mt-3 flex items-center gap-2.5">
+                      <div className="mt-3 flex min-w-0 items-center gap-2.5 rounded-xl border border-border bg-muted/25 px-3 py-2.5">
                         <Avatar size="sm">
                           <AvatarFallback className="bg-primary/20 text-primary text-[11px] font-bold">
                             {(activeRide.passenger.name ?? activeRide.passenger.email ?? "P")
@@ -524,12 +607,12 @@ export default function DriverHome() {
                       </div>
                     )}
 
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-3 space-y-2 rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5">
                       <div className="flex items-start gap-2.5">
                         <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
                         <div className="min-w-0">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Pickup</p>
-                          <p className="truncate text-[13px] font-medium text-foreground">
+                          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Pickup</p>
+                          <p className="truncate text-[13px] font-medium leading-snug text-foreground">
                             {formatPlace(activeRide.source)}
                           </p>
                         </div>
@@ -537,18 +620,18 @@ export default function DriverHome() {
                       <div className="flex items-start gap-2.5">
                         <Navigation className="mt-0.5 h-3.5 w-3.5 shrink-0 text-drio-blue" />
                         <div className="min-w-0">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Drop-off</p>
-                          <p className="truncate text-[13px] font-medium text-foreground">
+                          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Drop-off</p>
+                          <p className="truncate text-[13px] font-medium leading-snug text-foreground">
                             {formatPlace(activeRide.destination)}
                           </p>
                         </div>
                       </div>
                     </div>
 
-<div className="mt-3 grid grid-cols-3 gap-2">
-                      <div className="rounded-xl bg-secondary/60 border border-border px-3 py-2.5">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Distance</p>
-                        <p className="mt-0.5 text-[13px] font-semibold text-foreground">
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="rounded-xl border border-border/80 bg-muted/35 px-3 py-2.5 transition-colors duration-200">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Distance</p>
+                        <p className="mt-0.5 text-[13px] font-semibold leading-tight tabular-nums text-foreground">
                           {displayRoute
                             ? formatDistance(displayRoute.distance)
                             : activeRide.distance
@@ -556,15 +639,15 @@ export default function DriverHome() {
                             : "—"}
                         </p>
                       </div>
-                      <div className="rounded-xl bg-secondary/60 border border-border px-3 py-2.5">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{etaLabel}</p>
-                        <p className="mt-0.5 text-[13px] font-semibold text-foreground">
+                      <div className="rounded-xl border border-border/80 bg-muted/35 px-3 py-2.5 transition-colors duration-200">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{etaLabel}</p>
+                        <p className="mt-0.5 text-[13px] font-semibold leading-tight tabular-nums text-foreground">
                           {displayRoute ? formatDuration(displayRoute.duration) : "—"}
                         </p>
                       </div>
-                      <div className="rounded-xl bg-secondary/60 border border-border px-3 py-2.5">
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Fare</p>
-                        <p className="mt-0.5 text-[13px] font-semibold text-foreground">
+                      <div className="rounded-xl border border-border/80 bg-muted/35 px-3 py-2.5 transition-colors duration-200">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Fare</p>
+                        <p className="mt-0.5 text-[13px] font-semibold leading-tight tabular-nums text-foreground">
                           {formatFare(activeRide.fare)}
                         </p>
                       </div>
@@ -579,7 +662,7 @@ export default function DriverHome() {
                       </p>
                     )}
 
-                    <p className="mt-3 text-[11px] text-muted-foreground">
+                    <p className="mt-3 border-t border-border/70 pt-2.5 text-[11px] text-muted-foreground">
                       Booking ID{" "}
                       <span className="font-mono text-foreground/80">{activeRide._id}</span>
                     </p>
@@ -587,7 +670,7 @@ export default function DriverHome() {
 
                   {actionForStatus(activeRide.status) && (
                     <Button
-                      className="w-full rounded-2xl hover:scale-[1.01]"
+                      className="w-full rounded-2xl hover:scale-[1.01] motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
                       variant={actionForStatus(activeRide.status)!.variant}
                       size="lg"
                       onClick={() => void handleRideAction()}
@@ -599,13 +682,13 @@ export default function DriverHome() {
                         : actionForStatus(activeRide.status)!.label}
                     </Button>
                   )}
-                  {actionError && <p className="text-[12px] text-destructive">{actionError}</p>}
+                  {actionError && <p className="mt-2 rounded-lg bg-destructive/8 px-2.5 py-1.5 text-[12px] text-destructive">{actionError}</p>}
                   </motion.div>
                 ) : (
                   <motion.div
                     {...motionStateProps({ variants: page, reduced })}
                     key="none"
-                    className="flex items-start gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground"
+                    className="flex items-start gap-2 rounded-xl border border-dashed border-border/80 bg-muted/25 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground transition-colors duration-200"
                   >
                     <Warehouse className="mt-0.5 h-4 w-4 shrink-0 text-drio-violet" />
                     No active ride. You can accept a requested ride once it has been
@@ -620,9 +703,9 @@ export default function DriverHome() {
                   <motion.div
                     {...motionStateProps({ variants: page, reduced })}
                     key="completed"
-                    className="rounded-2xl border border-drio-success/25 bg-drio-success/5 p-4"
+                    className="rounded-2xl border border-drio-success/25 bg-drio-success/5 p-4 transition-colors duration-200"
                   >
-                    <p className="text-[15px] font-semibold text-foreground">Trip completed</p>
+                    <p className="text-[15px] font-semibold tracking-tight text-foreground">Trip completed</p>
                     <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
                       Fare {formatFare(completedRide.fare)} for a{" "}
                       {formatDistance(completedRide.distance)} trip has been counted
@@ -631,7 +714,7 @@ export default function DriverHome() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="mt-3 w-full hover:scale-[1.01]"
+                      className="mt-3 w-full hover:scale-[1.01] motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
                       onClick={() => setCompletedRide(null)}
                     >
                       Done
@@ -652,17 +735,17 @@ export default function DriverHome() {
                   animate={reduced ? undefined : "visible"}
                 >
                   <motion.div variants={stagger.item}>
-                    <div className="rounded-2xl border border-border bg-card p-4">
-                      <p className="text-[11px] text-muted-foreground">Trips</p>
-                      <p className="mt-1 text-[22px] font-bold text-foreground">
+                    <div className="rounded-2xl border border-border bg-muted/25 p-4 transition-colors duration-200">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Trips</p>
+                      <p className="mt-1 text-[22px] font-bold leading-none tracking-tight tabular-nums text-foreground">
                         {summary?.today.rides ?? 0}
                       </p>
                     </div>
                   </motion.div>
                   <motion.div variants={stagger.item}>
-                    <div className="rounded-2xl border border-border bg-card p-4">
-                      <p className="text-[11px] text-muted-foreground">Earnings</p>
-                      <p className="mt-1 text-[18px] font-bold text-foreground">
+                    <div className="rounded-2xl border border-border bg-muted/25 p-4 transition-colors duration-200">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Earnings</p>
+                      <p className="mt-1 text-[18px] font-bold leading-none tracking-tight tabular-nums text-foreground">
                         {formatFare(summary?.today.total ?? 0)}
                       </p>
                     </div>

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import heroImage from "@/assets/Hero-Image.png";
+import Logo from "@/components/Logo";
 
 type AuthLayoutProps = {
   children: ReactNode;
@@ -10,16 +11,16 @@ type AuthLayoutProps = {
 
 export default function AuthLayout({ children, title, subtitle, badge }: AuthLayoutProps) {
   return (
-    <div className="flex min-h-dvh bg-background pt-[env(safe-area-inset-top)] lg:pt-0">
+    <div className="flex min-h-dvh flex-col bg-background pt-[env(safe-area-inset-top)] lg:flex-row lg:pt-0">
       {/* ── Left branding panel ─────────────────────────────────── */}
       <div
-        className="relative hidden w-[44%] overflow-hidden lg:flex lg:flex-col bg-drio-deep"
+        className="relative h-[clamp(13rem,30svh,18rem)] w-full shrink-0 overflow-hidden rounded-t-[1.75rem] bg-drio-deep lg:flex lg:h-auto lg:w-[44%] lg:flex-col lg:rounded-none"
       >
         {/* Hero image — fills the whole panel */}
         <img
           src={heroImage}
           alt="Drio premium ride experience"
-          className="absolute inset-0 h-full w-full object-cover object-center"
+          className="absolute inset-0 h-full w-full object-cover object-[center_35%] lg:object-center"
         />
 
         {/* Legibility scrim */}
@@ -29,16 +30,28 @@ export default function AuthLayout({ children, title, subtitle, badge }: AuthLay
         {/* Ambient glow */}
         <div className="pointer-events-none absolute -bottom-24 -left-16 h-[360px] w-[360px] rounded-full bg-primary/12 blur-[100px]" />
 
+        <div className="absolute inset-x-0 bottom-0 z-10 px-6 pb-5 pt-24 text-center lg:hidden">
+          {badge && (
+            <span className="inline-block rounded-full bg-primary/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+              {badge}
+            </span>
+          )}
+          <h1 className="mt-2 font-serif text-[1.45rem] font-bold leading-tight tracking-tight text-foreground">
+            {title}
+          </h1>
+          <p className="mx-auto mt-1.5 max-w-sm text-[12px] leading-relaxed text-muted-foreground">
+            {subtitle}
+          </p>
+        </div>
+
         {/* Bottom copy */}
-        <div className="relative mt-auto px-10 pb-12">
+        <div className="relative mt-auto hidden px-10 pb-12 lg:block">
           {badge && (
             <span className="inline-block rounded-full bg-primary/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary mb-3">
               {badge}
             </span>
           )}
-          <p className="bg-gradient-to-r from-drio-accent-light to-drio-accent bg-clip-text font-serif text-[4rem] leading-none font-extrabold tracking-tight text-transparent">
-            Drio
-          </p>
+          <Logo className="!text-[4rem]" />
           <h1 className="mt-4 max-w-sm font-serif text-[1.75rem] font-bold leading-[1.25] tracking-tight text-foreground">
             {title}
           </h1>
@@ -67,14 +80,14 @@ export default function AuthLayout({ children, title, subtitle, badge }: AuthLay
       </div>
 
       {/* ── Right form panel ───────────────────────────────────── */}
-      <div className="relative flex w-full items-start justify-center px-6 py-8 sm:items-center sm:px-8 sm:py-12 lg:w-[56%]">
+      <div className="relative flex w-full grow items-start justify-center px-6 py-8 sm:items-center sm:px-8 sm:py-12 lg:w-[56%] lg:grow-0">
         {/* Mobile glows */}
         <div className="pointer-events-none absolute inset-0 lg:hidden">
           <div className="absolute left-4 top-4 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
           <div className="absolute bottom-4 right-4 h-48 w-48 rounded-full bg-primary/8 blur-3xl" />
         </div>
 
-        <div className="relative w-full max-w-[420px]">{children}</div>
+        <div className="relative -mt-8 w-full max-w-[420px] rounded-t-[1.75rem] border-x border-t border-border bg-background/95 px-5 pb-8 pt-7 text-center shadow-2xl backdrop-blur-md [&_label]:text-left sm:mx-4 sm:max-w-[440px] sm:rounded-[1.75rem] sm:border lg:mx-0 lg:mt-0 lg:max-w-[420px] lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:text-left lg:shadow-none lg:backdrop-blur-none">{children}</div>
       </div>
     </div>
   );

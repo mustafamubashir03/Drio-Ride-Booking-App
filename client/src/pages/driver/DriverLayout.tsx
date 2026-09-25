@@ -276,8 +276,7 @@ export default function DriverLayout() {
         <div className="mx-3 my-4 rounded-2xl bg-primary/8 border border-primary/15 p-4">
           <p className="text-xs font-semibold text-primary mb-1">Driver portal</p>
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Go online from Home to start receiving ride requests. Dispatch and
-            live matching arrive in a future milestone.
+             Go online from Home to start receiving nearby ride requests. Accepted rides appear here automatically.
           </p>
         </div>
 
@@ -323,7 +322,7 @@ export default function DriverLayout() {
         </header>
 
         {/* Mobile header */}
-        <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
+        <header className="relative z-[60] flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
               <Logo className="!text-[1rem]" />
@@ -344,7 +343,7 @@ export default function DriverLayout() {
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(60px+env(safe-area-inset-bottom))] lg:pb-0">
           {incomingRide ? (
-            <div className="shrink-0 p-3 lg:p-4">
+            <div className="contents lg:block lg:shrink-0 lg:p-4">
               <IncomingRideRequest
                 rideId={incomingRide.rideId}
                 pickup={incomingRide.pickup}
@@ -385,7 +384,7 @@ export default function DriverLayout() {
                   key={item.to}
                   to={item.to}
                   end={item.end}
-                  className="relative flex flex-1 flex-col items-center justify-center gap-[3px] transition-all duration-150 active:scale-95"
+                  className="relative flex flex-1 flex-col items-center justify-center gap-[3px] transition-colors duration-150 motion-safe:active:scale-[0.98] motion-reduce:transition-none"
                 >
                   {({ isActive }) => (
                     <>
@@ -398,7 +397,7 @@ export default function DriverLayout() {
                             "bg-drio-success/10": item.accent === "green",
                             "bg-drio-violet/10": item.accent === "violet",
                           })}
-                          transition={{ duration: 0.2, ease: "easeOut" }}
+                           transition={{ duration: reduced ? 0 : 0.2, ease: "easeOut" }}
                         />
                       )}
                       <span className="relative z-10 flex items-center justify-center">

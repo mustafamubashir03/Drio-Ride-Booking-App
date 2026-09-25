@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { MailCheck } from "lucide-react";
+import { CircleAlert, MailCheck } from "lucide-react";
 
 export default function DriverRegister() {
   const navigate = useNavigate();
@@ -118,7 +118,7 @@ export default function DriverRegister() {
   if (isPending || redirecting) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary" />
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary motion-reduce:animate-none" />
       </div>
     );
   }
@@ -131,7 +131,7 @@ export default function DriverRegister() {
         badge="DRIVER PORTAL"
       >
         <div className="mb-8 lg:hidden">
-          <Logo />
+          <Logo className="!text-[2rem]" />
         </div>
 
         <div className="flex flex-col items-center text-center">
@@ -151,8 +151,9 @@ export default function DriverRegister() {
           {error && (
             <div
               role="alert"
-              className="mt-5 w-full rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+              className="mt-5 flex w-full items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-[13px] font-medium text-destructive"
             >
+              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               {error}
             </div>
           )}
@@ -187,7 +188,7 @@ export default function DriverRegister() {
       badge="DRIVER PORTAL"
     >
       <div className="mb-8 lg:hidden">
-        <Logo />
+        <Logo className="!text-[2rem]" />
       </div>
 
       <div className="mb-7">
@@ -221,8 +222,9 @@ export default function DriverRegister() {
         {error && (
           <div
             role="alert"
-            className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+            className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-[13px] font-medium text-destructive"
           >
+            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             {error}
           </div>
         )}
@@ -294,7 +296,7 @@ export default function DriverRegister() {
           </div>
           <Link
             to="/register"
-            className="shrink-0 whitespace-nowrap font-semibold text-primary hover:text-drio-accent-hover transition-colors"
+            className="shrink-0 whitespace-nowrap rounded-md font-semibold text-primary transition-colors duration-150 hover:text-drio-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
           >
             Passenger registration
           </Link>

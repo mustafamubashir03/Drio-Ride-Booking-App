@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import { apiFetch, socketUrl } from "@/lib/runtime-config";
 
 type PassengerSocketState = {
   connected: boolean;
@@ -42,6 +43,22 @@ interface UsePassengerSocketOptions {
   onDriverLocation?: (data: DriverLocationData) => void;
 }
 
+const requestPassengerTicket = async () => {
+  const response = await apiFetch("/api/v1/socket-tickets/passenger", {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error(`Passenger ticket request failed with status ${response.status}`);
+  }
+
+  const data = (await response.json()) as { ticket?: unknown };
+  if (typeof data.ticket !== "string" || data.ticket.length === 0) {
+    throw new Error("Passenger ticket response did not include a ticket");
+  }
+  return data.ticket;
+};
+
 export function usePassengerSocket({
   passengerId,
   onRideStatusUpdate,
@@ -56,10 +73,10 @@ export function usePassengerSocket({
 
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loginSocketIdRef = useRef<string | null>(null);
   const onRideStatusUpdateRef = useRef(onRideStatusUpdate);
   const onDriverLocationRef = useRef(onDriverLocation);
 
-  // Keep the latest callbacks for handlers without reconnecting the socket.
   useEffect(() => {
     onRideStatusUpdateRef.current = onRideStatusUpdate;
     onDriverLocationRef.current = onDriverLocation;
@@ -67,10 +84,22 @@ export function usePassengerSocket({
 
   const emitPassengerLogin = useCallback(() => {
     const socket = socketRef.current;
-    if (socket?.connected) {
-      console.log("[PassengerSocket] Emitting passenger-login");
-      socket.emit("passenger-login");
-    }
+    if (!socket?.connected || loginSocketIdRef.current === socket.id) return;
+    loginSocketIdRef.current = socket.id!;
+
+    const request = (async () => {
+      try {
+        const ticket = await requestPassengerTicket();
+        if (socketRef.current !== socket || !socket.connected) return;
+        socket.emit("passenger-login", { ticket });
+      } catch (error) {
+        if (socketRef.current !== socket || !socket.connected) return;
+        console.error("[PassengerSocket] Ticket request failed", error);
+        socket.emit("passenger-login");
+      }
+    })();
+
+    return request;
   }, []);
 
   const connect = useCallback(() => {
@@ -79,7 +108,7 @@ export function usePassengerSocket({
 
     setState((prev) => ({ ...prev, connecting: true, error: null }));
 
-    const currentSocketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
+    const currentSocketUrl = socketUrl || window.location.origin;
     const socket = io(currentSocketUrl, {
       transports: ["websocket", "polling"],
       withCredentials: true,
@@ -100,10 +129,13 @@ export function usePassengerSocket({
         error: null,
         socket,
       }));
-      emitPassengerLogin();
+      void emitPassengerLogin();
     });
 
     socket.on("disconnect", (reason) => {
+      if (socketRef.current === socket) {
+        loginSocketIdRef.current = null;
+      }
       console.log("[PassengerSocket] Disconnected, reason:", reason);
       setState((prev) => ({
         ...prev,
@@ -127,6 +159,7 @@ export function usePassengerSocket({
 
     socket.on("login-fail", (data) => {
       console.error("[PassengerSocket] Login failed:", data);
+      loginSocketIdRef.current = null;
       setState((prev) => ({ ...prev, error: data?.message || "Passenger authentication failed" }));
     });
 
@@ -146,6 +179,7 @@ export function usePassengerSocket({
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
+    loginSocketIdRef.current = null;
     socketRef.current?.disconnect();
     socketRef.current = null;
     setState({
@@ -156,13 +190,12 @@ export function usePassengerSocket({
     });
   }, []);
 
-  // Re-login on (re)connect once identity is available.
   useEffect(() => {
+    loginSocketIdRef.current = null;
     if (passengerId && socketRef.current?.connected) {
-      console.log("[PassengerSocket] passengerId available, socket connected, re-emitting passenger-login");
-      socketRef.current.emit("passenger-login");
+      void emitPassengerLogin();
     }
-  }, [passengerId]);
+  }, [passengerId, emitPassengerLogin]);
 
   useEffect(() => {
     return () => {

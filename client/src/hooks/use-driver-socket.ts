@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import { apiFetch, socketUrl } from "@/lib/runtime-config";
 
 type DriverSocketState = {
   connected: boolean;
@@ -37,6 +38,22 @@ export interface DriverRideStatusUpdateData {
   timeStamps?: string;
 }
 
+const requestDriverTicket = async () => {
+  const response = await apiFetch("/api/v1/socket-tickets/driver", {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error(`Driver ticket request failed with status ${response.status}`);
+  }
+
+  const data = (await response.json()) as { ticket?: unknown };
+  if (typeof data.ticket !== "string" || data.ticket.length === 0) {
+    throw new Error("Driver ticket response did not include a ticket");
+  }
+  return data.ticket;
+};
+
 export function useDriverSocket(
   driverId?: string,
   onNewRideNotification?: (data: RideNotificationData) => void,
@@ -54,18 +71,33 @@ export function useDriverSocket(
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectingRef = useRef(false);
   const driverIdRef = useRef(driverId);
+  const loginSocketIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     driverIdRef.current = driverId;
+    loginSocketIdRef.current = null;
   }, [driverId]);
 
   const emitDriverLogin = useCallback(() => {
     const socket = socketRef.current;
     const currentDriverId = driverIdRef.current;
-    if (socket?.connected && currentDriverId) {
-      console.log("[DriverSocket] Emitting driver-login for driverId:", currentDriverId);
-      socket.emit("driver-login", { driverId: currentDriverId });
-    }
+    if (!socket?.connected || !currentDriverId) return;
+    if (loginSocketIdRef.current === socket.id) return;
+    loginSocketIdRef.current = socket.id!;
+
+    const request = (async () => {
+      try {
+        const ticket = await requestDriverTicket();
+        if (socketRef.current !== socket || !socket.connected) return;
+        socket.emit("driver-login", { ticket, driverId: currentDriverId });
+      } catch (error) {
+        if (socketRef.current !== socket || !socket.connected) return;
+        console.error("[DriverSocket] Ticket request failed", error);
+        socket.emit("driver-login", { driverId: currentDriverId });
+      }
+    })();
+
+    return request;
   }, []);
 
   const connect = useCallback(() => {
@@ -74,7 +106,7 @@ export function useDriverSocket(
 
     setState((prev) => ({ ...prev, connecting: true, error: null }));
 
-    const currentSocketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
+    const currentSocketUrl = socketUrl || window.location.origin;
     const socket = io(currentSocketUrl, {
       transports: ["websocket", "polling"],
       withCredentials: true,
@@ -96,12 +128,14 @@ export function useDriverSocket(
         error: null,
         socket,
       }));
-      // Emit driver login after connection
-      emitDriverLogin();
+      void emitDriverLogin();
     });
 
     socket.on("disconnect", (reason) => {
       connectingRef.current = false;
+      if (socketRef.current === socket) {
+        loginSocketIdRef.current = null;
+      }
       console.log("[DriverSocket] Disconnected, reason:", reason);
       setState((prev) => ({
         ...prev,
@@ -126,6 +160,7 @@ export function useDriverSocket(
 
     socket.on("login-fail", (data) => {
       console.error("[DriverSocket] Login failed:", data);
+      loginSocketIdRef.current = null;
       setState((prev) => ({ ...prev, error: data?.message || "Login failed" }));
     });
 
@@ -148,6 +183,7 @@ export function useDriverSocket(
 
   const disconnect = useCallback(() => {
     connectingRef.current = false;
+    loginSocketIdRef.current = null;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -169,13 +205,11 @@ export function useDriverSocket(
     socketRef.current.emit("driver-location", location);
   }, []);
 
-  // Emit driver-login when driverId becomes available and socket is already connected
   useEffect(() => {
     if (driverId && socketRef.current?.connected) {
-      console.log("[DriverSocket] driverId available, socket connected, emitting driver-login");
-      socketRef.current.emit("driver-login", { driverId });
+      void emitDriverLogin();
     }
-  }, [driverId]);
+  }, [driverId, emitDriverLogin]);
 
   useEffect(() => {
     return () => {

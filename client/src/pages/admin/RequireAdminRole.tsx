@@ -8,7 +8,7 @@ export default function RequireAdminRole({ children }: { children: ReactNode }) 
   if (isPending) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary" />
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary motion-reduce:animate-none" />
       </div>
     );
   }

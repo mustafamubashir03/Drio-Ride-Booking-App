@@ -14,8 +14,10 @@ import {
 import {
   CalendarClock,
   CheckCircle2,
+  CircleAlert,
   ClipboardX,
   Clock3,
+  FileImage,
   FileText,
   ShieldCheck,
   XCircle,
@@ -38,24 +40,33 @@ function isPdfDocument(doc: { secureUrl: string; originalFilename?: string | nul
   return false;
 }
 
+function documentFormatMeta(doc: { secureUrl: string; originalFilename?: string | null }) {
+  return isPdfDocument(doc)
+    ? { icon: FileText, chip: "bg-drio-violet/12 text-drio-violet" }
+    : { icon: FileImage, chip: "bg-drio-blue/12 text-drio-blue" };
+}
+
 const statusMeta: Record<
   DriverApplication["status"],
-  { label: string; icon: typeof Clock3; badge: string }
+  { label: string; icon: typeof Clock3; badge: string; soft: string }
 > = {
   pending: {
     label: "Pending review",
     icon: Clock3,
     badge: "bg-amber-500/15 text-amber-500 border-amber-500/25",
+    soft: "bg-amber-500/15 text-amber-500",
   },
   approved: {
     label: "Approved",
     icon: CheckCircle2,
     badge: "bg-drio-success/15 text-drio-success border-drio-success/25",
+    soft: "bg-drio-success/15 text-drio-success",
   },
   rejected: {
     label: "Not approved",
     icon: XCircle,
     badge: "bg-destructive/10 text-destructive border-destructive/25",
+    soft: "bg-destructive/12 text-destructive",
   },
 };
 
@@ -90,7 +101,11 @@ export default function DriverStatus() {
   if (loading) {
     return (
       <MotionPage className="flex min-h-dvh items-center justify-center bg-background">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary" />
+        <div
+          role="status"
+          aria-label="Loading your application"
+          className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary motion-reduce:animate-none"
+        />
       </MotionPage>
     );
   }
@@ -98,9 +113,15 @@ export default function DriverStatus() {
   if (!app) {
     return (
       <MotionPage className="flex min-h-dvh items-center justify-center bg-background px-4">
-        <div className="w-full max-w-md rounded-2xl border border-destructive/20 bg-destructive/10 p-6 text-center">
+        <div className="w-full max-w-md rounded-2xl border border-destructive/20 bg-destructive/8 p-6 text-center">
+          <span
+            aria-hidden
+            className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/12"
+          >
+            <CircleAlert className="h-5 w-5 text-destructive" />
+          </span>
           <p className="text-[14px] font-semibold text-destructive">Could not load your application</p>
-          <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">{error ?? "Try again in a moment."}</p>
+          <p className="mt-1.5 text-[12px] leading-relaxed break-words text-muted-foreground [overflow-wrap:anywhere]">{error ?? "Try again in a moment."}</p>
           <Button className="mt-5" variant="outline" onClick={() => window.location.reload()}>
             Try again
           </Button>
@@ -111,6 +132,12 @@ export default function DriverStatus() {
 
   const meta = statusMeta[app.status];
   const Icon = meta.icon;
+  const heading =
+    app.status === "approved"
+      ? "Application approved"
+      : app.status === "rejected"
+        ? "Application not approved"
+        : "Application submitted";
   const uploaded = app.documents ?? [];
 
   return (
@@ -137,18 +164,21 @@ export default function DriverStatus() {
 
       <main className="mx-auto w-full min-w-0 max-w-2xl flex-1 px-6 py-8">
         <div className="mb-6 text-center">
-          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/15">
-            <Icon className="h-7 w-7 text-primary" />
+          <div
+            className={`mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full ${meta.soft}`}
+          >
+            <Icon className="h-7 w-7" aria-hidden />
           </div>
           <h1 className="font-serif text-[1.75rem] font-bold tracking-tight text-foreground">
-            Application submitted
+            {heading}
           </h1>
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
             <Badge variant="outline" className={meta.badge}>
+              <Icon aria-hidden />
               {meta.label}
             </Badge>
-            <span className="flex items-center gap-1 text-[12px] text-muted-foreground">
-              <CalendarClock className="h-3.5 w-3.5" />
+            <span className="flex items-center gap-1 text-[12px] text-muted-foreground tabular-nums">
+              <CalendarClock className="h-3.5 w-3.5" aria-hidden />
               {formatDate(app.submittedAt)}
             </span>
           </div>
@@ -157,19 +187,20 @@ export default function DriverStatus() {
         {error && (
           <div
             role="alert"
-            className="mb-5 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+            className="mb-5 flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-[13px] font-medium break-words text-destructive [overflow-wrap:anywhere]"
           >
+            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             {error}
           </div>
         )}
 
         {app.status === "pending" && (
           <Card className="mb-5">
-            <CardContent className="pt-6">
+            <CardContent>
               <h2 className="text-[15px] font-semibold text-foreground">
                 What happens next
               </h2>
-              <ul className="mt-3 space-y-2.5">
+              <ul className="mt-3 space-y-2">
                 {[
                   "Our review team checks your documents and details.",
                   "We update your status here — no need to contact us.",
@@ -179,7 +210,12 @@ export default function DriverStatus() {
                     key={item}
                     className="flex items-start gap-2.5 text-[13px] leading-relaxed text-muted-foreground"
                   >
-                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <span
+                      aria-hidden
+                      className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/12"
+                    >
+                      <ShieldCheck className="h-2.5 w-2.5 text-primary" />
+                    </span>
                     {item}
                   </li>
                 ))}
@@ -204,9 +240,14 @@ export default function DriverStatus() {
 
         {app.status === "approved" && (
           <Card className="mb-5 border-drio-success/25 bg-drio-success/5">
-            <CardContent className="pt-6">
+            <CardContent>
               <div className="flex items-start gap-3">
-                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-drio-success" />
+                <span
+                  aria-hidden
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-drio-success/12"
+                >
+                  <CheckCircle2 className="h-4 w-4 text-drio-success" />
+                </span>
                 <div>
                   <h2 className="text-[15px] font-semibold text-foreground">
                     You&apos;re approved!
@@ -235,9 +276,14 @@ export default function DriverStatus() {
 
         {app.status === "rejected" && (
           <Card className="mb-5">
-            <CardContent className="pt-6">
+            <CardContent>
               <div className="flex items-start gap-3">
-                <ClipboardX className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                <span
+                  aria-hidden
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-destructive/12"
+                >
+                  <ClipboardX className="h-4 w-4 text-destructive" />
+                </span>
                 <div>
                   <h2 className="text-[15px] font-semibold text-foreground">
                     Application not approved
@@ -249,28 +295,29 @@ export default function DriverStatus() {
                   </p>
                 </div>
               </div>
-              {(app.rejectionReason || app.adminNote) && (
-                <div className="mt-4 space-y-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
-                  {app.rejectionReason && (
-                    <div>
-                      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Reason
-                      </p>
-                      <p className="mt-1 text-[13px] font-medium text-foreground">
-                        {app.rejectionReason}
-                      </p>
-                    </div>
-                  )}
-                  {app.adminNote && (
-                    <div>
-                      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Review note
-                      </p>
-                      <p className="mt-1 text-[13px] leading-relaxed text-foreground">
-                        {app.adminNote}
-                      </p>
-                    </div>
-                  )}
+              {app.rejectionReason && (
+                <div className="mt-4 rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3">
+                  <p className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-destructive/80">
+                    <XCircle className="h-3 w-3 shrink-0" aria-hidden />
+                    Reason
+                  </p>
+                  <p className="mt-1.5 whitespace-pre-wrap text-[13px] font-medium text-foreground [overflow-wrap:anywhere]">
+                    {app.rejectionReason}
+                  </p>
+                </div>
+              )}
+              {app.adminNote && (
+                <div
+                  className={`rounded-xl border border-border bg-muted/30 px-4 py-3 ${
+                    app.rejectionReason ? "mt-2.5" : "mt-4"
+                  }`}
+                >
+                  <p className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Review note
+                  </p>
+                  <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-foreground [overflow-wrap:anywhere]">
+                    {app.adminNote}
+                  </p>
                 </div>
               )}
               <p className="mt-4 text-[13px] leading-relaxed text-muted-foreground">
@@ -282,42 +329,59 @@ export default function DriverStatus() {
 
         {/* Documents */}
         <Card>
-          <CardContent className="pt-6">
+          <CardContent>
             <div className="mb-4 flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" />
+              <FileText className="h-4 w-4 text-primary" aria-hidden />
               <h2 className="text-[15px] font-semibold text-foreground">
                 Uploaded documents
               </h2>
+              {uploaded.length > 0 && (
+                <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
+                  {uploaded.length} / 3
+                </span>
+              )}
             </div>
             {uploaded.length === 0 ? (
               <p className="text-[13px] text-muted-foreground">
                 No documents uploaded yet.
               </p>
             ) : (
-              <ul className="divide-y divide-border border border-border rounded-xl">
-                {uploaded.map((doc) => (
-                  <li
-                    key={doc.publicId}
-                    className="flex items-center justify-between gap-3 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-semibold text-foreground">
-                        {doc.originalFilename ?? doc.publicId}
-                      </p>
-                      <p className="text-[12px] text-muted-foreground">
-                        Uploaded {formatDate(doc.uploadedAt)}
-                      </p>
-                    </div>
-                    <a
-                      href={doc.secureUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 text-[13px] font-medium text-primary hover:text-drio-accent-hover transition-colors"
+              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+                {uploaded.map((doc) => {
+                  const format = documentFormatMeta(doc);
+                  const FormatIcon = format.icon;
+                  return (
+                    <li
+                      key={doc.publicId}
+                      className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors duration-150 hover:bg-secondary/40 motion-reduce:transition-none"
                     >
-                      {isPdfDocument(doc) ? "View PDF" : "View"}
-                    </a>
-                  </li>
-                ))}
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span
+                          aria-hidden
+                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${format.chip}`}
+                        >
+                          <FormatIcon className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-semibold text-foreground">
+                            {doc.originalFilename ?? doc.publicId}
+                          </p>
+                          <p className="text-[12px] text-muted-foreground tabular-nums">
+                            Uploaded {formatDate(doc.uploadedAt)}
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={doc.secureUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 rounded-md text-[13px] font-medium text-primary transition-colors duration-150 hover:text-drio-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+                      >
+                        {isPdfDocument(doc) ? "View PDF ↗" : "View ↗"}
+                      </a>
+                    </li>
+                  );
+                })}
               </ul>
             )}
             {app.status === "pending" && uploaded.length > 0 && (

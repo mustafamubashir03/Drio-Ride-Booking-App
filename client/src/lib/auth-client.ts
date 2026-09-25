@@ -1,9 +1,10 @@
 import { createAuthClient } from "better-auth/react";
+import { apiUrl } from "./runtime-config";
 
 const defaultApiOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
 
 export const authClient = createAuthClient({
-  baseURL: import.meta.env.VITE_BETTER_AUTH_URL ?? defaultApiOrigin,
+  baseURL: apiUrl || defaultApiOrigin,
   fetchOptions: {
     credentials: "include",
   },

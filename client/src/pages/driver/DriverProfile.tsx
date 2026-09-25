@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
+  fetchDriverRating,
   fetchMyDriverApplication,
   type DriverApplication,
 } from "@/lib/driver-api";
+import type { DriverRatingSummary } from "@/lib/bookings-api";
 import { formatDate } from "@/lib/format";
-import { Car, FileText, User as UserIcon } from "lucide-react";
+import { Car, CheckCircle2, CircleAlert, Clock3, FileImage, FileText, Info, Star, User as UserIcon, XCircle } from "lucide-react";
 import { MotionPage } from "@/motion/MotionPage";
 
 function Initials(name?: string, email?: string) {
@@ -23,33 +26,44 @@ function isPdfDocument(doc: { secureUrl: string; originalFilename?: string | nul
   return false;
 }
 
+function documentFormatMeta(doc: { secureUrl: string; originalFilename?: string | null }) {
+  return isPdfDocument(doc)
+    ? { icon: FileText, chip: "bg-drio-violet/12 text-drio-violet" }
+    : { icon: FileImage, chip: "bg-drio-blue/12 text-drio-blue" };
+}
+
 const statusMeta: Record<
   DriverApplication["status"],
-  { label: string; badge: string }
+  { label: string; badge: string; icon: typeof Clock3 }
 > = {
   pending: {
     label: "Pending review",
     badge: "bg-amber-500/15 text-amber-500 border-amber-500/25",
+    icon: Clock3,
   },
   approved: {
     label: "Approved",
     badge: "bg-drio-success/15 text-drio-success border-drio-success/25",
+    icon: CheckCircle2,
   },
   rejected: {
     label: "Not approved",
     badge: "bg-destructive/10 text-destructive border-destructive/25",
+    icon: XCircle,
   },
 };
 
 export default function DriverProfile() {
   const { data: session } = authClient.useSession();
   const user = (session as unknown as {
-    user?: { name?: string; email?: string; image?: string; role?: string };
+    user?: { name?: string; email?: string; image?: string | null; role?: string };
   })?.user;
 
   const [app, setApp] = useState<DriverApplication | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [rating, setRating] = useState<DriverRatingSummary | null>(null);
+  const [ratingStatus, setRatingStatus] = useState<"loading" | "success" | "error">("loading");
 
   useEffect(() => {
     let cancelled = false;
@@ -64,13 +78,26 @@ export default function DriverProfile() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    fetchDriverRating()
+      .then((value) => {
+        if (cancelled) return;
+        setRating(value);
+        setRatingStatus("success");
+      })
+      .catch(() => {
+        if (!cancelled) setRatingStatus("error");
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
   const meta = app ? statusMeta[app.status] : null;
+  const StatusIcon = meta?.icon;
   const documents = app?.documents ?? [];
+  const hasRegistration = documents.some(
+    (document) => document.documentType === "vehicle-registration",
+  );
 
   return (
     <MotionPage className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto p-4 lg:p-8">
@@ -78,8 +105,9 @@ export default function DriverProfile() {
         {error && (
           <div
             role="alert"
-            className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive"
+            className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-[13px] font-medium break-words text-destructive [overflow-wrap:anywhere]"
           >
+            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             {error}
           </div>
         )}
@@ -102,6 +130,29 @@ export default function DriverProfile() {
                   {user?.name ?? "Drio Driver"}
                 </p>
                 <p className="truncate text-[12px] text-muted-foreground sm:text-[13px]">{user?.email}</p>
+                <p className="mt-1 flex items-center gap-1 text-[11.5px] text-muted-foreground">
+                  {ratingStatus === "success" && rating?.average != null && rating.count > 0 ? (
+                    <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" aria-hidden />
+                  ) : (
+                    <Star className="h-3.5 w-3.5 text-muted-foreground/60" aria-hidden />
+                  )}
+                  {ratingStatus === "loading" ? (
+                    "Loading rating…"
+                  ) : ratingStatus === "error" ? (
+                    "Rating unavailable"
+                  ) : rating?.average != null && rating.count > 0 ? (
+                    <>
+                      <span className="font-semibold text-foreground tabular-nums">
+                        {rating.average.toFixed(1)}
+                      </span>
+                      <span className="tabular-nums">
+                        · {rating.count} {rating.count === 1 ? "rating" : "ratings"}
+                      </span>
+                    </>
+                  ) : (
+                    "No ratings yet"
+                  )}
+                </p>
               </div>
               <div className="shrink-0 pb-1">
                 <span className="rounded-full bg-primary/12 border border-primary/20 px-2.5 py-1.5 text-[10px] font-semibold text-primary sm:px-3.5 sm:text-[11px]">
@@ -115,45 +166,71 @@ export default function DriverProfile() {
         {/* Driver application */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserIcon className="h-4 w-4 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-[15px] font-semibold">
+              <UserIcon className="h-4 w-4 text-primary" aria-hidden />
               Driver application
             </CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-primary" />
+              <div
+                role="status"
+                aria-label="Loading driver application"
+                className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/30 px-4 py-3"
+              >
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-primary motion-reduce:animate-none" aria-hidden />
                 <p className="text-[12px] text-muted-foreground">Loading…</p>
               </div>
-            ) : app && meta ? (
+            ) : error ? (
+              <div className="rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3">
+                <p className="text-[12px] leading-relaxed text-muted-foreground">
+                  We couldn&apos;t load your driver application.
+                </p>
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.location.reload()}
+                >
+                  Try again
+                </Button>
+              </div>
+            ) : app && meta && StatusIcon ? (
               <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <p className="text-[12px] text-muted-foreground">Status</p>
                   <Badge variant="outline" className={meta.badge}>
+                    <StatusIcon aria-hidden />
                     {meta.label}
                   </Badge>
                 </div>
                 <Separator className="my-2.5" />
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <p className="text-[12px] text-muted-foreground">Submitted</p>
-                  <p className="text-[13px] font-semibold text-foreground">
+                  <p className="text-[13px] font-semibold text-foreground tabular-nums">
                     {formatDate(app.submittedAt)}
                   </p>
                 </div>
                 <Separator className="my-2.5" />
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <p className="text-[12px] text-muted-foreground">Reviewed</p>
-                  <p className="text-[13px] font-semibold text-foreground">
+                  <p
+                    className={`text-[13px] font-semibold tabular-nums ${
+                      app.reviewedAt ? "text-foreground" : "text-muted-foreground"
+                    }`}
+                  >
                     {formatDate(app.reviewedAt)}
                   </p>
                 </div>
                 {app.rejectionReason && (
                   <>
                     <Separator className="my-2.5" />
-                    <div className="flex items-start justify-between gap-4">
-                      <p className="text-[12px] text-muted-foreground shrink-0">Reason</p>
-                      <p className="text-[13px] font-medium text-foreground text-right">
+                    <div className="space-y-1.5 rounded-lg border border-destructive/20 bg-destructive/8 px-3 py-2.5">
+                      <p className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-destructive/80">
+                        <XCircle className="h-3 w-3 shrink-0" aria-hidden />
+                        Reason
+                      </p>
+                      <p className="whitespace-pre-wrap text-[13px] font-medium text-foreground [overflow-wrap:anywhere]">
                         {app.rejectionReason}
                       </p>
                     </div>
@@ -171,9 +248,14 @@ export default function DriverProfile() {
         {/* Documents */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-drio-blue" />
+            <CardTitle className="flex items-center gap-2 text-[15px] font-semibold">
+              <FileText className="h-4 w-4 text-drio-blue" aria-hidden />
               Documents
+              {documents.length > 0 && (
+                <span className="ml-auto text-[11px] font-normal text-muted-foreground tabular-nums">
+                  {documents.length} / 3
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -182,30 +264,42 @@ export default function DriverProfile() {
                 No documents uploaded yet.
               </p>
             ) : (
-              <ul className="divide-y divide-border border border-border rounded-xl">
-                {documents.map((doc) => (
-                  <li
-                    key={doc.publicId}
-                    className="flex items-center justify-between gap-3 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-semibold text-foreground">
-                        {doc.originalFilename ?? doc.publicId}
-                      </p>
-                      <p className="text-[12px] text-muted-foreground">
-                        Uploaded {formatDate(doc.uploadedAt)}
-                      </p>
-                    </div>
-                    <a
-                      href={doc.secureUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 text-[13px] font-medium text-primary hover:text-drio-accent-hover transition-colors"
+              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+                {documents.map((doc) => {
+                  const format = documentFormatMeta(doc);
+                  const FormatIcon = format.icon;
+                  return (
+                    <li
+                      key={doc.publicId}
+                      className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors duration-150 hover:bg-secondary/40 motion-reduce:transition-none"
                     >
-                      {isPdfDocument(doc) ? "View PDF" : "View"}
-                    </a>
-                  </li>
-                ))}
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span
+                          aria-hidden
+                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${format.chip}`}
+                        >
+                          <FormatIcon className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-semibold text-foreground">
+                            {doc.originalFilename ?? doc.publicId}
+                          </p>
+                          <p className="text-[12px] text-muted-foreground tabular-nums">
+                            Uploaded {formatDate(doc.uploadedAt)}
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={doc.secureUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 rounded-md text-[13px] font-medium text-primary transition-colors duration-150 hover:text-drio-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+                      >
+                        {isPdfDocument(doc) ? "View PDF ↗" : "View ↗"}
+                      </a>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>
@@ -214,21 +308,31 @@ export default function DriverProfile() {
         {/* Vehicle */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Car className="h-4 w-4 text-drio-violet" />
+            <CardTitle className="flex items-center gap-2 text-[15px] font-semibold">
+              <Car className="h-4 w-4 text-drio-violet" aria-hidden />
               Vehicle
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <p className="text-[12px] text-muted-foreground">Vehicle details</p>
-                <p className="text-[13px] font-semibold text-foreground">
-                  Registration uploaded
+                <p
+                  className={`flex items-center gap-1.5 text-[13px] font-semibold ${
+                    hasRegistration ? "text-drio-success" : "text-muted-foreground"
+                  }`}
+                >
+                  {hasRegistration ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  ) : (
+                    <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  )}
+                  {hasRegistration ? "Registration uploaded" : "Registration not uploaded"}
                 </p>
               </div>
             </div>
-            <p className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
+            <p className="mt-3 flex items-start gap-1.5 text-[12px] leading-relaxed text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
               Vehicle make, model, colour and plate aren&apos;t stored yet.
               They&apos;ll appear here once driver vehicle management ships.
             </p>

@@ -1,3 +1,5 @@
+import { apiFetch } from "./runtime-config";
+
 export type SelectedLocation = {
     id?: string;
     name: string;
@@ -21,7 +23,7 @@ export type PlaceSearchResponse = {
 
 export async function searchPlaces(query: string): Promise<PlaceResult[]> {
     const encoded = encodeURIComponent(query);
-    const response = await fetch(`/api/places/search?q=${encoded}`, {
+    const response = await apiFetch(`/api/places/search?q=${encoded}`, {
         headers: { 'Accept': 'application/json' },
     });
 
@@ -67,7 +69,7 @@ export async function fetchRoute(
     const timeout = window.setTimeout(() => controller.abort(), 12000);
     let response: Response;
     try {
-        response = await fetch(url, {
+        response = await apiFetch(url, {
             headers: { 'Accept': 'application/json' },
             signal: controller.signal,
         });

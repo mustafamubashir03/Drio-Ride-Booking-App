@@ -1,8 +1,12 @@
+import { cn } from "@/lib/utils";
+
 export default function Logo({ className = "" }: { className?: string }) {
   return (
     <span
-      className={`font-serif font-bold tracking-tight text-foreground ${className}`}
-      style={{ fontSize: "1.6rem", letterSpacing: "-0.03em" }}
+      className={cn(
+        "inline-block bg-gradient-to-r from-drio-accent-light to-drio-accent bg-clip-text font-serif text-[1.6rem] font-extrabold leading-none tracking-tight text-transparent",
+        className,
+      )}
     >
       Drio
     </span>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
@@ -24,15 +24,19 @@ import {
 import {
   Car,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
+  CircleAlert,
   ClipboardCheck,
   Clock3,
+  FileImage,
   FileText,
   Files,
   Inbox,
   LayoutDashboard,
   Loader2,
   LogOut,
+  NotebookPen,
   RefreshCw,
   Shield,
   User as UserIcon,
@@ -61,19 +65,25 @@ const filterTabs: Array<{ id: Filter; label: string }> = [
 
 const statusMeta: Record<
   DriverApplicationStatus,
-  { label: string; badge: string }
+  { label: string; badge: string; icon: typeof Clock3; soft: string }
 > = {
   pending: {
     label: "Pending",
     badge: "bg-amber-500/15 text-amber-500 border-amber-500/25",
+    icon: Clock3,
+    soft: "bg-amber-500/15 text-amber-500",
   },
   approved: {
     label: "Approved",
     badge: "bg-drio-success/15 text-drio-success border-drio-success/25",
+    icon: CheckCircle2,
+    soft: "bg-drio-success/15 text-drio-success",
   },
   rejected: {
     label: "Rejected",
     badge: "bg-destructive/10 text-destructive border-destructive/25",
+    icon: XCircle,
+    soft: "bg-destructive/10 text-destructive",
   },
 };
 
@@ -97,9 +107,48 @@ function isPdfDocument(doc: {
   return false;
 }
 
+const pdfFormatMeta = {
+  icon: FileText,
+  chip: "bg-drio-violet/12 text-drio-violet",
+} as const;
+
+const imageFormatMeta = {
+  icon: FileImage,
+  chip: "bg-drio-blue/12 text-drio-blue",
+} as const;
+
+function documentFormatMeta(doc: {
+  secureUrl: string;
+  originalFilename?: string | null;
+}) {
+  return isPdfDocument(doc) ? pdfFormatMeta : imageFormatMeta;
+}
+
 function Initials({ name, email }: { name?: string; email?: string }) {
   const source = name ?? email ?? "U";
   return source.charAt(0).toUpperCase();
+}
+
+function StatusBadge({ status }: { status: DriverApplicationStatus }) {
+  const { label, badge, icon: StatusIcon } = statusMeta[status];
+  return (
+    <Badge variant="outline" className={badge}>
+      <StatusIcon aria-hidden />
+      {label}
+    </Badge>
+  );
+}
+
+function StatusIconChip({ status }: { status: DriverApplicationStatus }) {
+  const { icon: StatusIcon, soft } = statusMeta[status];
+  return (
+    <span
+      aria-hidden
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${soft}`}
+    >
+      <StatusIcon className="h-3.5 w-3.5" />
+    </span>
+  );
 }
 
 function MetricCard({
@@ -123,18 +172,19 @@ function MetricCard({
 
   return (
     <Card>
-      <CardContent className="pt-6">
+      <CardContent>
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">
+          <p className="text-[11.5px] font-medium uppercase tracking-wider text-muted-foreground">
             {label}
           </p>
           <span
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${current.bg}`}
+            aria-hidden
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${current.bg}`}
           >
             <Icon className={`h-4 w-4 ${current.icon}`} />
           </span>
         </div>
-        <p className="mt-3 font-serif text-[2rem] font-bold leading-none text-foreground">
+        <p className="mt-2.5 font-serif text-[1.75rem] font-bold leading-none text-foreground tabular-nums">
           {value === undefined ? "—" : value}
         </p>
       </CardContent>
@@ -182,7 +232,7 @@ function ReviewDecisionCard({
 
   return (
     <Card className="border-primary/20 bg-primary/8">
-      <CardContent className="pt-6">
+      <CardContent>
         <div className="flex items-center gap-2">
           <ClipboardCheck className="h-4 w-4 text-primary" />
           <h3 className="text-[15px] font-semibold text-foreground">
@@ -198,6 +248,7 @@ function ReviewDecisionCard({
           <Button
             type="button"
             variant={decision === "approved" ? "default" : "ghost"}
+            aria-pressed={decision === "approved"}
             className="gap-1.5 py-2 text-[13px] font-semibold"
             onClick={() => setDecision("approved")}
           >
@@ -207,6 +258,7 @@ function ReviewDecisionCard({
           <Button
             type="button"
             variant={decision === "rejected" ? "destructive" : "ghost"}
+            aria-pressed={decision === "rejected"}
             className="gap-1.5 py-2 text-[13px] font-semibold"
             onClick={() => setDecision("rejected")}
           >
@@ -263,7 +315,7 @@ function ReviewDecisionCard({
                   rows={2}
                   value={adminNote}
                   onChange={(e) => setAdminNote(e.target.value)}
-                  placeholder="Private note for the review record."
+                  placeholder="Visible to the applicant on their status page."
                 />
               </div>
             </>
@@ -273,8 +325,9 @@ function ReviewDecisionCard({
         {error && (
           <p
             role="alert"
-            className="mt-3 text-[12px] font-medium text-destructive"
+            className="mt-3 flex items-start gap-1.5 text-[12px] font-medium text-destructive"
           >
+            <CircleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
             {error}
           </p>
         )}
@@ -283,11 +336,11 @@ function ReviewDecisionCard({
           <Button
             type="button"
             variant={decision === "approved" ? "default" : "destructive"}
-            className="flex-1 font-semibold hover:scale-[1.01]"
+            className="flex-1 font-semibold hover:scale-[1.01] motion-reduce:scale-100 motion-reduce:transition-none"
             disabled={submitting}
             onClick={handleSubmit}
           >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />}
             {decision === "approved"
               ? "Approve application"
               : "Reject application"}
@@ -315,6 +368,9 @@ export default function AdminDashboard() {
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const listRequestSeq = useRef(0);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<AdminDriverApplication | null>(null);
@@ -334,25 +390,29 @@ export default function AdminDashboard() {
     }
   };
 
-  const loadList = async () => {
+  const loadList = useCallback(async () => {
+    const request = ++listRequestSeq.current;
     setListLoading(true);
     setListError(null);
     try {
       const result = await listDriverApplicationsAdminApi({
-        page: 1,
+        page: currentPage,
         limit: 50,
         status: filter === "all" ? undefined : filter,
       });
+      if (request !== listRequestSeq.current) return;
       setApplications(result.applications);
       setTotalCount(result.pagination.total);
+      setTotalPages(result.pagination.pages);
     } catch (err) {
+      if (request !== listRequestSeq.current) return;
       setListError(
         err instanceof Error ? err.message : "Could not load driver applications."
       );
     } finally {
-      setListLoading(false);
+      if (request === listRequestSeq.current) setListLoading(false);
     }
-  };
+  }, [currentPage, filter]);
 
   useEffect(() => {
     void loadOverview();
@@ -360,7 +420,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     void loadList();
-  }, [filter]);
+  }, [loadList]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -394,8 +454,26 @@ export default function AdminDashboard() {
   const handleFilterChange = (next: Filter) => {
     if (next === filter) return;
     setFilter(next);
+    setCurrentPage(1);
+    setTotalPages(1);
+    setApplications([]);
     setSelectedId(null);
     setSelected(null);
+  };
+
+  const selectApplication = (applicationId: string) => {
+    setSelectedId(applicationId);
+    setSelected(null);
+    setDetailError(null);
+    setDetailLoading(true);
+  };
+
+  const changePage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(totalPages, page)));
+    setSelectedId(null);
+    setSelected(null);
+    setDetailError(null);
+    setDetailLoading(false);
   };
 
   const handleReviewed = (updated: AdminDriverApplication) => {
@@ -417,7 +495,7 @@ export default function AdminDashboard() {
   const selectedMeta = selected ? statusMeta[selected.status] : null;
 
   return (
-    <MotionPage className="flex min-h-dvh bg-background">
+    <MotionPage className="flex h-dvh min-h-0 overflow-hidden bg-background">
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-[220px] flex-col border-r bg-sidebar lg:flex">
         <div className="flex h-[64px] shrink-0 items-center px-5">
@@ -438,7 +516,8 @@ export default function AdminDashboard() {
                 key={item.label}
                 type="button"
                 disabled={!item.active}
-                className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition-all duration-150 ${
+                aria-current={item.active ? "page" : undefined}
+                className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition-colors duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
                   item.active
                     ? "bg-primary/12 text-primary"
                     : "cursor-default text-muted-foreground/60"
@@ -449,7 +528,7 @@ export default function AdminDashboard() {
                     item.active ? "bg-primary/15 text-primary" : "bg-white/5"
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5" />
+                  <Icon className="h-3.5 w-3.5" aria-hidden />
                 </span>
                 {item.label}
                 {item.soon && (
@@ -462,10 +541,16 @@ export default function AdminDashboard() {
           })}
         </nav>
 
-        <div className="mx-3 my-4 rounded-2xl bg-primary/8 border border-primary/15 p-4">
-          <p className="text-xs font-semibold text-primary mb-1">
-            Review queue
-          </p>
+        <div className="mx-3 my-4 rounded-2xl border border-primary/15 bg-primary/8 px-4 py-3.5">
+          <div className="mb-1.5 flex items-center gap-2">
+            <span
+              aria-hidden
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/15"
+            >
+              <Clock3 className="h-3.5 w-3.5 text-amber-500" />
+            </span>
+            <p className="text-xs font-semibold text-primary">Review queue</p>
+          </div>
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             Pending applications show up here for review.
           </p>
@@ -496,9 +581,9 @@ export default function AdminDashboard() {
             </Link>
             <button
               onClick={handleSignOut}
-              className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[12px] font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-colors"
+              className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[12px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-destructive/8 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
             >
-              <LogOut className="h-3.5 w-3.5" />
+              <LogOut className="h-3.5 w-3.5" aria-hidden />
               Sign out
             </button>
           </AccountSwitcher>
@@ -506,7 +591,7 @@ export default function AdminDashboard() {
       </aside>
 
       {/* Main */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col lg:min-h-dvh lg:ml-[220px]">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col lg:min-h-0 lg:ml-[220px]">
         <header className="hidden h-[64px] shrink-0 items-center justify-between border-b border-border px-8 lg:flex">
           <div>
             <h1 className="font-serif text-[20px] font-bold tracking-tight text-foreground leading-tight">
@@ -518,6 +603,7 @@ export default function AdminDashboard() {
               variant="outline"
               className="border-amber-500/25 bg-amber-500/15 text-amber-500"
             >
+              <Clock3 aria-hidden />
               {overview ? `${overview.pending} pending` : "Pending…"}
             </Badge>
           </div>
@@ -525,9 +611,14 @@ export default function AdminDashboard() {
 
         {/* Mobile header */}
         <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
-          <h1 className="truncate text-[14px] font-semibold text-foreground">
-            Admin Dashboard
-          </h1>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
+              <Logo className="!text-[1rem]" />
+            </span>
+            <h1 className="truncate text-[14px] font-semibold text-foreground">
+              Admin Dashboard
+            </h1>
+          </div>
           <div className="flex items-center gap-2">
             <AccountSwitcher compact placement="bottom">
               <span />
@@ -536,14 +627,15 @@ export default function AdminDashboard() {
               variant="outline"
               className="border-amber-500/25 bg-amber-500/15 text-amber-500"
             >
+              <Clock3 aria-hidden />
               {overview ? `${overview.pending} pending` : "Pending…"}
             </Badge>
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           {/* Overview */}
-          <section className="mb-6">
+          <section className="mx-auto mb-6 max-w-[1440px]">
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h2 className="text-[15px] font-semibold text-foreground">
@@ -558,7 +650,7 @@ export default function AdminDashboard() {
                 size="sm"
                 onClick={() => void loadOverview()}
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                 Refresh
               </Button>
             </div>
@@ -602,29 +694,35 @@ export default function AdminDashboard() {
               </motion.div>
             </motion.div>
             {overviewError && (
-              <p className="mt-3 text-[12px] font-medium text-destructive">
+              <p
+                role="alert"
+                className="mt-3 flex items-start gap-1.5 text-[12px] font-medium text-destructive"
+              >
+                <CircleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
                 {overviewError}
               </p>
             )}
           </section>
 
           {/* Applications */}
-          <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
+          <section className="mx-auto grid max-w-[1440px] items-start gap-4 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
             {/* List */}
-            <Card className="xl:sticky xl:top-0">
-              <div className="flex flex-col gap-3 px-5 pt-5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+            <Card className="min-w-0 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto">
+              <div className="flex flex-col gap-3 px-5 pt-5">
                 <div className="min-w-0">
                   <h2 className="text-[15px] font-semibold text-foreground">
                     Applications
                   </h2>
-                  <p className="mt-0.5 text-[12px] text-muted-foreground">
-                    {totalCount} total
+                  <p className="mt-0.5 text-[12px] text-muted-foreground tabular-nums">
+                    {totalPages > 1
+                      ? `${applications.length} of ${totalCount}`
+                      : `${totalCount} total`}
                     {filter !== "all"
                       ? ` · ${statusMeta[filter].label.toLowerCase()}`
                       : ""}
                   </p>
                 </div>
-                <div className="flex w-full min-w-0 flex-wrap gap-1.5 sm:w-auto sm:shrink-0">
+                <div className="flex w-full min-w-0 flex-wrap gap-1.5">
                   {filterTabs.map((tab) => {
                     const isActive = filter === tab.id;
                     const count = filterCount(tab.id);
@@ -633,16 +731,17 @@ export default function AdminDashboard() {
                         key={tab.id}
                         type="button"
                         onClick={() => handleFilterChange(tab.id)}
-                        className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                        aria-pressed={isActive}
+                        className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none ${
                           isActive
                             ? "border-primary/25 bg-primary/12 text-primary"
-                            : "border-border text-muted-foreground hover:text-foreground"
+                            : "border-border text-muted-foreground hover:border-border hover:bg-secondary/40 hover:text-foreground"
                         }`}
                       >
                         {tab.label}
                         {count !== undefined && (
                           <span
-                            className={`rounded-full px-1 text-[10px] font-semibold ${
+                            className={`min-w-4 rounded-full px-1 text-center text-[10px] font-semibold tabular-nums ${
                               isActive
                                 ? "bg-primary/15 text-primary"
                                 : "bg-muted text-muted-foreground"
@@ -659,13 +758,18 @@ export default function AdminDashboard() {
 
               <div className="mt-4 px-3 pb-3">
                 <AnimatePresence mode="wait">
-                  {listLoading && applications.length === 0 ? (
+                  {listLoading ? (
                     <motion.div
                       {...motionStateProps({ variants: page, reduced })}
                       key="loading"
+                      role="status"
+                      aria-label="Loading applications"
                       className="flex h-40 items-center justify-center"
                     >
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      <Loader2
+                        className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none"
+                        aria-hidden
+                      />
                     </motion.div>
                   ) : listError ? (
                     <motion.div
@@ -673,6 +777,10 @@ export default function AdminDashboard() {
                       key="error"
                       className="flex h-40 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-destructive/30 px-4 text-center"
                     >
+                      <CircleAlert
+                        className="h-5 w-5 text-destructive"
+                        aria-hidden
+                      />
                       <p className="text-[13px] font-medium text-destructive">
                         Could not load applications
                       </p>
@@ -681,7 +789,7 @@ export default function AdminDashboard() {
                         variant="outline"
                         onClick={() => void loadList()}
                       >
-                        <RefreshCw className="h-3.5 w-3.5" />
+                        <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                         Try again
                       </Button>
                     </motion.div>
@@ -691,7 +799,10 @@ export default function AdminDashboard() {
                       key="empty"
                       className="flex h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 text-center"
                     >
-                      <Inbox className="h-6 w-6 text-muted-foreground/60" />
+                      <Inbox
+                        className="h-6 w-6 text-muted-foreground/60"
+                        aria-hidden
+                      />
                       <p className="text-[13px] font-medium text-foreground">
                         No{" "}
                         {filter === "all" ? "" : statusMeta[filter].label.toLowerCase()}{" "}
@@ -710,11 +821,22 @@ export default function AdminDashboard() {
                           <button
                             key={application._id}
                             type="button"
-                            onClick={() => setSelectedId(application._id)}
-                            className={`flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors ${
-                              isSelected ? "bg-primary/8" : "hover:bg-secondary/50"
+                            aria-current={isSelected ? "true" : undefined}
+                            onClick={() => selectApplication(application._id)}
+                            className={`group relative flex w-full items-center gap-3 py-2.5 pl-5 pr-3.5 text-left transition-colors duration-150 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60 motion-reduce:transition-none ${
+                              isSelected
+                                ? "bg-primary/10"
+                                : "hover:bg-secondary/50"
                             }`}
                           >
+                            <span
+                              aria-hidden
+                              className={`absolute inset-y-0 left-0 w-[3px] rounded-r-full bg-primary transition-opacity duration-150 motion-reduce:transition-none ${
+                                isSelected
+                                  ? "opacity-100"
+                                  : "opacity-0 group-hover:opacity-40"
+                              }`}
+                            />
                             <Avatar size="sm" className="shrink-0">
                               <AvatarFallback className="bg-primary/20 text-[10px] font-bold text-primary">
                                 <Initials
@@ -724,7 +846,13 @@ export default function AdminDashboard() {
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-[13px] font-semibold text-foreground">
+                              <p
+                                className={`truncate text-[13px] font-semibold transition-colors duration-150 motion-reduce:transition-none ${
+                                  isSelected
+                                    ? "text-primary"
+                                    : "text-foreground"
+                                }`}
+                              >
                                 {application.user?.name ??
                                   application.user?.email ??
                                   "Applicant"}
@@ -734,23 +862,54 @@ export default function AdminDashboard() {
                               </p>
                             </div>
                             <div className="shrink-0 text-right">
-                              <Badge
-                                variant="outline"
-                                className={statusMeta[application.status].badge}
-                              >
-                                {statusMeta[application.status].label}
-                              </Badge>
-                              <p className="mt-1 text-[11px] text-muted-foreground">
+                              <StatusBadge status={application.status} />
+                              <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
                                 {formatDate(application.submittedAt)}
                               </p>
                             </div>
-                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                            <ChevronRight
+                              aria-hidden
+                              className={`h-4 w-4 shrink-0 transition-[color,transform] duration-150 group-hover:translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none ${
+                                isSelected
+                                  ? "text-primary"
+                                  : "text-muted-foreground/50"
+                              }`}
+                            />
                           </button>
                         );
                       })}
                     </motion.div>
                   )}
                 </AnimatePresence>
+                {totalPages > 1 && (
+                  <div className="mt-3 flex items-center justify-between px-1">
+                    <span className="text-[11px] text-muted-foreground">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="outline"
+                        disabled={listLoading || currentPage <= 1}
+                        onClick={() => changePage(currentPage - 1)}
+                        aria-label="Previous applications page"
+                      >
+                        <ChevronLeft aria-hidden />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="outline"
+                        disabled={listLoading || currentPage >= totalPages}
+                        onClick={() => changePage(currentPage + 1)}
+                        aria-label="Next applications page"
+                      >
+                        <ChevronRight aria-hidden />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </Card>
 
@@ -764,7 +923,10 @@ export default function AdminDashboard() {
                   >
                     <Card>
                       <CardContent className="flex flex-col items-center justify-center px-6 py-16 text-center">
-                        <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                        <span
+                          aria-hidden
+                          className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10"
+                        >
                           <UserIcon className="h-7 w-7 text-primary" />
                         </span>
                         <p className="text-[15px] font-semibold text-foreground">
@@ -783,8 +945,15 @@ export default function AdminDashboard() {
                     key="loading"
                   >
                     <Card>
-                      <CardContent className="flex h-64 items-center justify-center">
-                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      <CardContent
+                        role="status"
+                        aria-label="Loading application"
+                        className="flex h-64 items-center justify-center"
+                      >
+                        <Loader2
+                          className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none"
+                          aria-hidden
+                        />
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -793,37 +962,40 @@ export default function AdminDashboard() {
                     {...motionStateProps({ variants: page, reduced })}
                     key="error"
                   >
-                    <Card>
+                    <Card className="border-destructive/25">
                       <CardContent className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                        <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
-                          <FileText className="h-6 w-6 text-destructive" />
-                    </span>
-                    <p className="text-[14px] font-semibold text-destructive">
-                      Could not load this application
-                    </p>
-                    <p className="max-w-xs text-[12px] leading-relaxed text-muted-foreground">
-                      {detailError}
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setDetailAttempt((n) => n + 1)}
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Try again
-                    </Button>
-                  </CardContent>
+                        <span
+                          aria-hidden
+                          className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10"
+                        >
+                          <CircleAlert className="h-6 w-6 text-destructive" />
+                        </span>
+                        <p className="text-[14px] font-semibold text-destructive">
+                          Could not load this application
+                        </p>
+                        <p className="max-w-xs text-[12px] leading-relaxed break-words text-muted-foreground [overflow-wrap:anywhere]">
+                          {detailError}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDetailAttempt((n) => n + 1)}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                          Try again
+                        </Button>
+                      </CardContent>
                     </Card>
                   </motion.div>
                 ) : selected ? (
-                <motion.div
-                  {...motionStateProps({ variants: page, reduced })}
-                  key="detail"
-                  className="space-y-4"
-                >
+                  <motion.div
+                    {...motionStateProps({ variants: page, reduced })}
+                    key={selected?._id ?? "detail"}
+                    className="space-y-4"
+                  >
                   {/* Applicant */}
                   <Card>
-                    <CardContent className="pt-6">
+                    <CardContent>
                       <div className="flex items-center gap-3">
                         <Avatar size="lg" className="shrink-0">
                           <AvatarFallback className="bg-primary/20 text-sm font-bold text-primary">
@@ -841,37 +1013,48 @@ export default function AdminDashboard() {
                             {selected.user?.email ?? "—"}
                           </p>
                         </div>
-                        {selectedMeta && (
-                          <Badge
-                            variant="outline"
-                            className={selectedMeta.badge}
-                          >
-                            {selectedMeta.label}
-                          </Badge>
-                        )}
+                        {selectedMeta && <StatusBadge status={selected.status} />}
                       </div>
                       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-                          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                        <div className="rounded-xl border border-border bg-muted/30 px-3.5 py-2.5">
+                          <p className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
                             Submitted
                           </p>
-                          <p className="mt-1 text-[13px] font-semibold text-foreground">
+                          <p className="mt-0.5 text-[13px] font-semibold text-foreground tabular-nums">
                             {formatDate(selected.submittedAt)}
                           </p>
                         </div>
-                        <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-                          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                        <div className="rounded-xl border border-border bg-muted/30 px-3.5 py-2.5">
+                          <p className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
                             Reviewed
                           </p>
-                          <p className="mt-1 text-[13px] font-semibold text-foreground">
+                          <p
+                            className={`mt-0.5 text-[13px] font-semibold tabular-nums ${
+                              selected.reviewedAt
+                                ? "text-foreground"
+                                : "text-muted-foreground"
+                            }`}
+                          >
                             {formatDate(selected.reviewedAt)}
                           </p>
                         </div>
-                        <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-                          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                        <div
+                          className={`rounded-xl border px-3.5 py-2.5 transition-colors duration-200 motion-reduce:transition-none ${
+                            selected.documents.length >= 3
+                              ? "border-drio-success/25 bg-drio-success/8"
+                              : "border-border bg-muted/30"
+                          }`}
+                        >
+                          <p className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
                             Documents
                           </p>
-                          <p className="mt-1 text-[13px] font-semibold text-foreground">
+                          <p
+                            className={`mt-0.5 text-[13px] font-semibold tabular-nums ${
+                              selected.documents.length >= 3
+                                ? "text-drio-success"
+                                : "text-foreground"
+                            }`}
+                          >
                             {selected.documents.length} / 3
                           </p>
                         </div>
@@ -881,9 +1064,9 @@ export default function AdminDashboard() {
 
                   {/* Documents */}
                   <Card>
-                    <CardContent className="pt-6">
+                    <CardContent>
                       <div className="mb-4 flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-primary" />
+                        <FileText className="h-4 w-4 text-primary" aria-hidden />
                         <h3 className="text-[15px] font-semibold text-foreground">
                           Uploaded documents
                         </h3>
@@ -894,23 +1077,25 @@ export default function AdminDashboard() {
                           No documents uploaded yet.
                         </p>
                       ) : (
-                        <div className="space-y-3">
+                        <div className="space-y-2.5">
                           {selected.documents.map((doc) => {
                             const isPdf = isPdfDocument(doc);
+                            const format = documentFormatMeta(doc);
+                            const FormatIcon = format.icon;
                             const label =
                               DRIVER_DOCUMENT_LABELS[doc.documentType] ??
                               doc.documentType;
                             return (
                               <div
                                 key={doc.publicId}
-                                className="overflow-hidden rounded-xl border border-border bg-muted/20"
+                                className="overflow-hidden rounded-xl border border-border bg-muted/20 transition-colors duration-200 hover:border-border/80 motion-reduce:transition-none"
                               >
                                 {!isPdf && (
                                   <a
                                     href={doc.secureUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="block"
+                                    className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
                                   >
                                     <img
                                       src={doc.secureUrl}
@@ -919,13 +1104,14 @@ export default function AdminDashboard() {
                                     />
                                   </a>
                                 )}
-                                <div className="flex items-center justify-between gap-3 px-4 py-3">
+                                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
                                   <div className="flex min-w-0 items-center gap-2.5">
-                                    {isPdf ? (
-                                      <FileText className="h-4 w-4 shrink-0 text-destructive" />
-                                    ) : (
-                                      <CheckCircle2 className="h-4 w-4 shrink-0 text-drio-success" />
-                                    )}
+                                    <span
+                                      aria-hidden
+                                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${format.chip}`}
+                                    >
+                                      <FormatIcon className="h-3.5 w-3.5" />
+                                    </span>
                                     <div className="min-w-0">
                                       <p className="truncate text-[13px] font-semibold text-foreground">
                                         {label}
@@ -942,7 +1128,7 @@ export default function AdminDashboard() {
                                     href={doc.secureUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="shrink-0 text-[12px] font-semibold text-primary transition-colors hover:text-drio-accent-hover"
+                                    className="shrink-0 rounded-md text-[12px] font-semibold text-primary transition-colors duration-150 hover:text-drio-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
                                   >
                                     {isPdf ? "Open PDF ↗" : "Open ↗"}
                                   </a>
@@ -958,27 +1144,32 @@ export default function AdminDashboard() {
                   {/* Review notes */}
                   {(selected.adminNote || selected.rejectionReason) && (
                     <Card>
-                      <CardContent className="pt-6">
+                      <CardContent>
                         <h3 className="text-[15px] font-semibold text-foreground">
                           Review notes
                         </h3>
-                        <div className="mt-3 space-y-3">
+                        <div className="mt-3 space-y-2.5">
                           {selected.rejectionReason && (
                             <div className="rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3">
-                              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                              <p className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-destructive/80">
+                                <XCircle className="h-3 w-3 shrink-0" aria-hidden />
                                 Rejection reason
                               </p>
-                              <p className="mt-1 text-[13px] font-medium text-foreground">
+                              <p className="mt-1.5 whitespace-pre-wrap text-[13px] font-medium text-foreground [overflow-wrap:anywhere]">
                                 {selected.rejectionReason}
                               </p>
                             </div>
                           )}
                           {selected.adminNote && (
                             <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-                              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                              <p className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+                                <NotebookPen
+                                  className="h-3 w-3 shrink-0"
+                                  aria-hidden
+                                />
                                 Admin note
                               </p>
-                              <p className="mt-1 text-[13px] leading-relaxed text-foreground">
+                              <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-foreground [overflow-wrap:anywhere]">
                                 {selected.adminNote}
                               </p>
                             </div>
@@ -995,8 +1186,8 @@ export default function AdminDashboard() {
                       onReviewed={handleReviewed}
                     />
                   ) : (
-                    <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                    <div className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/30 px-4 py-3">
+                      <StatusIconChip status={selected.status} />
                       <p className="text-[12px] text-muted-foreground">
                         This application is already{" "}
                         {statusMeta[selected.status].label.toLowerCase()}.

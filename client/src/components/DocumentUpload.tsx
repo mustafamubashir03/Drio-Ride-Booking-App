@@ -8,7 +8,15 @@ import {
   type DriverDocumentType,
 } from "@/lib/driver-api";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Loader2, RefreshCw, UploadCloud, FileText } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleAlert,
+  FileImage,
+  FileText,
+  Loader2,
+  RefreshCw,
+  UploadCloud,
+} from "lucide-react";
 
 const ACCEPT = "image/jpeg,image/png,image/webp,application/pdf";
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
@@ -30,8 +38,18 @@ function isPdfDocument(doc: DriverApplicationDocument): boolean {
   return false;
 }
 
-function getDocumentIcon(doc: DriverApplicationDocument) {
-  return isPdfDocument(doc) ? FileText : CheckCircle2;
+function getDocumentFormatMeta(doc: DriverApplicationDocument) {
+  return isPdfDocument(doc)
+    ? {
+        icon: FileText,
+        chip: "bg-drio-violet/12 text-drio-violet",
+        link: "View PDF ↗",
+      }
+    : {
+        icon: FileImage,
+        chip: "bg-drio-blue/12 text-drio-blue",
+        link: "View document ↗",
+      };
 }
 
 type SlotProps = {
@@ -89,11 +107,14 @@ function DocumentSlot({ documentType, existing, disabled, onUploaded }: SlotProp
     />
   );
 
+  const format = existing ? getDocumentFormatMeta(existing) : null;
+  const FormatIcon = format?.icon;
+
   return (
     <div
-      className={`rounded-xl border p-4 transition-colors ${
+      className={`rounded-xl border p-4 transition-colors duration-200 focus-within:border-primary/35 motion-reduce:transition-none ${
         existing
-          ? "border-drio-success/30 bg-drio-success/5"
+          ? "border-drio-success/25 bg-drio-success/5"
           : "border-border bg-card"
       }`}
     >
@@ -104,28 +125,30 @@ function DocumentSlot({ documentType, existing, disabled, onUploaded }: SlotProp
           <p className="text-[13px] font-semibold text-foreground">
             {DRIVER_DOCUMENT_LABELS[documentType]}
           </p>
-          {existing ? (
-            <div className="mt-1 space-y-1">
-              <div className="flex items-center gap-1.5">
-                {(() => {
-                  const Icon = getDocumentIcon(existing);
-                  return <Icon className="h-3.5 w-3.5 text-drio-success shrink-0" />;
-                })()}
-                <span className="truncate text-[12px] text-muted-foreground">
+          {existing && format && FormatIcon ? (
+            <div className="mt-1.5 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${format.chip}`}
+                >
+                  <FormatIcon className="h-3 w-3" />
+                </span>
+                <span className="min-w-0 truncate text-[12px] text-muted-foreground">
                   {existing.originalFilename ?? "Uploaded"}
                   {existing.uploadedAt
                     ? ` · ${formatUploadedAt(existing.uploadedAt)}`
                     : ""}
                 </span>
               </div>
-              <div>
+              <div className="pl-8">
                 <a
                   href={existing.secureUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-block text-[12px] font-semibold text-primary hover:text-drio-accent-hover transition-colors"
+                  className="inline-block rounded-md text-[12px] font-semibold text-primary transition-colors duration-150 hover:text-drio-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
                 >
-                  {isPdfDocument(existing) ? "View PDF ↗" : "View document ↗"}
+                  {format.link}
                 </a>
               </div>
             </div>
@@ -134,34 +157,49 @@ function DocumentSlot({ documentType, existing, disabled, onUploaded }: SlotProp
               JPG, PNG, WEBP or PDF · max 5 MB
             </p>
           )}
-          {error && <p className="mt-1.5 text-[12px] text-destructive">{error}</p>}
+          {error && (
+            <p
+              role="alert"
+              className="mt-2 flex items-start gap-1.5 text-[12px] break-words text-destructive [overflow-wrap:anywhere]"
+            >
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              {error}
+            </p>
+          )}
         </div>
 
-        <Button
-          type="button"
-          variant={existing ? "outline" : "default"}
-          size="sm"
-          disabled={disabled || uploading}
-          onClick={() => inputRef.current?.click()}
-          className="shrink-0"
-        >
-          {uploading ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Uploading…
-            </>
-          ) : existing ? (
-            <>
-              <RefreshCw className="h-3.5 w-3.5" />
-              Replace
-            </>
-          ) : (
-            <>
-              <UploadCloud className="h-3.5 w-3.5" />
-              Upload
-            </>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          {existing && (
+            <span className="flex items-center gap-1 text-[10.5px] font-semibold text-drio-success">
+              <CheckCircle2 className="h-3 w-3" aria-hidden />
+              Uploaded
+            </span>
           )}
-        </Button>
+          <Button
+            type="button"
+            variant={existing ? "outline" : "default"}
+            size="sm"
+            disabled={disabled || uploading}
+            onClick={() => inputRef.current?.click()}
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                Uploading…
+              </>
+            ) : existing ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                Replace
+              </>
+            ) : (
+              <>
+                <UploadCloud className="h-3.5 w-3.5" aria-hidden />
+                Upload
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
