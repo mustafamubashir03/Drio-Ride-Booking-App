@@ -1,7 +1,7 @@
 import app from './app';
 import { serverConfig } from './config';
 import logger from './config/logger.config';
-import { connectDB } from "./lib/auth";
+import { connectDB, initAuth } from "./lib/auth";
 import { connectMongoose } from "./lib/mongoose";
 import { seedRbac } from "./lib/rbac.seed";
 import { connectRedis, disconnectRedis } from "./lib/redis";
@@ -12,6 +12,7 @@ import http from 'http';
 
 
 connectDB().then(async () => {
+    await initAuth();
     await connectMongoose();
     await connectRedis();
     await seedRbac();

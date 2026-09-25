@@ -8,8 +8,8 @@ import { attachCorrelationIdMiddleware } from './middlewares/correlation.middlew
 import { logForwardedClientIpMiddleware } from './middlewares/client-ip.middleware';
 import placesRouter from './routers/v1/places.router';
 import routesRouter from './routers/routes.router';
-import { toNodeHandler } from "better-auth/node";
-import { auth, client } from "./lib/auth";
+import type { toNodeHandler as toNodeHandlerFactory } from "better-auth/node" with { "resolution-mode": "import" };
+import { getAuth, client } from "./lib/auth";
 
 
 
@@ -43,7 +43,27 @@ app.use(cors({
 app.use(logForwardedClientIpMiddleware);
 
 // Better Auth must be mounted before express.json() so it can parse its own body.
-app.all("/api/auth/{*splat}", toNodeHandler(auth));
+// better-auth/node is ESM-only, so the handler is resolved on first use rather
+// than at import time. initAuth() has already run by then: both entrypoints await
+// it before the app starts serving, and a failure here is forwarded to the error
+// handlers below rather than thrown at require time.
+type AuthNodeHandler = ReturnType<typeof toNodeHandlerFactory>;
+
+let authNodeHandler: AuthNodeHandler | undefined;
+
+const resolveAuthNodeHandler = async (): Promise<AuthNodeHandler> => {
+    if (!authNodeHandler) {
+        const { toNodeHandler } = await import("better-auth/node");
+        authNodeHandler = toNodeHandler(getAuth());
+    }
+    return authNodeHandler;
+};
+
+app.all("/api/auth/{*splat}", (req, res, next) => {
+    resolveAuthNodeHandler()
+        .then((handler) => handler(req, res))
+        .catch(next);
+});
 
 app.use(express.json());
 

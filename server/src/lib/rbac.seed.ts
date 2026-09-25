@@ -1,7 +1,7 @@
 import { RoleModel } from "../models";
 import { UserModel } from "../models";
 import logger from "../config/logger.config";
-import { defaultRoles } from "./rbac";
+import { getDefaultRoles } from "./rbac";
 
 const roleDefinitions: Record<string, { description: string; resources: Record<string, readonly string[]> }> = {
     passenger: {
@@ -90,4 +90,4 @@ export async function seedRbac() {
     await backfillUserRoles();
 }
 
-export { defaultRoles, roleDefinitions };
+export { getDefaultRoles as defaultRoles, roleDefinitions };

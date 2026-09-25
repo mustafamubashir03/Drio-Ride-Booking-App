@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import { auth } from "../lib/auth";
+import { getAuth } from "../lib/auth";
 import { RoleModel } from "../models";
 import { UnauthorizedError, ForbiddenError } from "../utils/errors/app.error";
 
@@ -22,7 +22,7 @@ declare global {
 
 // Disable the cookie cache so role changes take effect immediately.
 export async function getSessionUser(req: Request): Promise<AuthUser | null> {
-    const session = await auth.api.getSession({
+    const session = await getAuth().api.getSession({
         headers: req.headers as unknown as Headers,
         query: { disableCookieCache: "true" },
     });

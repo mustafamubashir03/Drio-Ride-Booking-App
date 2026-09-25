@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import app from './app';
 import logger from './config/logger.config';
-import { connectDB } from "./lib/auth";
+import { connectDB, initAuth } from "./lib/auth";
 import { connectMongoose } from "./lib/mongoose";
 import { seedRbac } from "./lib/rbac.seed";
 import { connectRedis } from "./lib/redis";
@@ -21,6 +21,7 @@ let bootstrap: Promise<void> | undefined;
 const ensureReady = () => {
     if (!bootstrap) {
         bootstrap = (async () => {
+            await initAuth();
             await connectDB();
             await connectMongoose();
             await connectRedis();
