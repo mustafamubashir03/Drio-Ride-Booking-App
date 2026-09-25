@@ -1,0 +1,128 @@
+services:
+  - type: keyvalue
+    name: drio-redis
+    region: oregon
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+    persistenceMode: off
+
+  - type: web
+    name: drio-api
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: server
+    buildCommand: npm ci --include=dev
+    startCommand: npm start
+    healthCheckPath: /api/v1/ping/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: REDIS_URI
+        fromService:
+          type: keyvalue
+          name: drio-redis
+          property: connectionString
+      - key: BETTER_AUTH_URL
+        fromService:
+          type: web
+          name: drio-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: BETTER_AUTH_SECRET
+        generateValue: true
+      - key: TRUSTED_ORIGINS
+        fromService:
+          type: web
+          name: drio-web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: SOCKET_SERVER_URL
+        fromService:
+          type: web
+          name: drio-socket
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: SOCKET_BRIDGE_SECRET
+        generateValue: true
+      - key: DRIO_DISABLE_EMAIL_VERIFICATION
+        value: "false"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: MAIL_ID
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_PRESET_NAME
+        sync: false
+      - key: PHOTON_API_BASE_URL
+        sync: false
+      - key: OSRM_API_BASE_URL
+        sync: false
+
+  - type: web
+    name: drio-socket
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: socket-server
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/v1/ping/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BIND_HOST
+        value: 0.0.0.0
+      - key: MAIN_API_URL
+        fromService:
+          type: web
+          name: drio-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: REDIS_URI
+        fromService:
+          type: keyvalue
+          name: drio-redis
+          property: connectionString
+      - key: SOCKET_BRIDGE_SECRET
+        fromService:
+          type: web
+          name: drio-api
+          envVarKey: SOCKET_BRIDGE_SECRET
+      - key: TRUSTED_ORIGINS
+        fromService:
+          type: web
+          name: drio-web
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: drio-web
+    runtime: static
+    rootDir: client
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_DEPLOY_ENV
+        value: render
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: drio-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: VITE_SOCKET_URL
+        fromService:
+          type: web
+          name: drio-socket
+          envVarKey: RENDER_EXTERNAL_URL

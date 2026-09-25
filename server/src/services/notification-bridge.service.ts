@@ -8,6 +8,12 @@ import logger from "../config/logger.config";
  */
 
 const SOCKET_SERVER_URL = serverConfig.SOCKET_SERVER_URL;
+const bridgeHeaders = {
+    "Content-Type": "application/json",
+    ...(serverConfig.SOCKET_BRIDGE_SECRET
+        ? { Authorization: `Bearer ${serverConfig.SOCKET_BRIDGE_SECRET}` }
+        : {}),
+};
 
 export type RideInfo = {
     pickup: string;
@@ -30,7 +36,7 @@ export const notifyDrivers = async (rideId: string, driverIds: string[], rideInf
         logger.info(`[BOOKING] notifyDrivers: rideId=${rideId}, driverIds=${JSON.stringify(driverIds)}, rideInfo=${JSON.stringify(rideInfo)}`);
         const res = await fetch(`${SOCKET_SERVER_URL}/api/v1/notification/notify-drivers`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: bridgeHeaders,
             body: JSON.stringify({ rideId, driverIds, rideInfo }),
         });
         if (!res.ok) {
@@ -64,7 +70,7 @@ export const removeRideNotification = async (bookingId: string, driverIds: strin
     try {
         const res = await fetch(`${SOCKET_SERVER_URL}/api/v1/notification/remove-ride-notification`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: bridgeHeaders,
             body: JSON.stringify({ rideId: bookingId, driverIds }),
         });
         if (!res.ok) {
@@ -103,7 +109,7 @@ export const notifyPassenger = async ({
         };
         const res = await fetch(`${SOCKET_SERVER_URL}/api/v1/notification/notify-passenger`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: bridgeHeaders,
             body: JSON.stringify(payload),
         });
         if (!res.ok) {
@@ -133,7 +139,7 @@ export const notifyDriver = async ({
     try {
         const res = await fetch(`${SOCKET_SERVER_URL}/api/v1/notification/notify-driver`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: bridgeHeaders,
             body: JSON.stringify({ driverId, bookingId, status }),
         });
         if (!res.ok) {

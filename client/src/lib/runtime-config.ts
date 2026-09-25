@@ -19,7 +19,7 @@ if (import.meta.env.PROD && !isLocalBuild && (!configuredApiUrl || isLocalOrigin
   throw new Error("VITE_API_URL must be set to the deployed web API origin for a production build");
 }
 
-if (isRenderBuild && (!configuredSocketUrl || isLocalOrigin(configuredSocketUrl))) {
+if (import.meta.env.PROD && !isLocalBuild && (!configuredSocketUrl || isLocalOrigin(configuredSocketUrl))) {
   throw new Error("VITE_SOCKET_URL must be set to the deployed socket-server origin for a production build");
 }
 

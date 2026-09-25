@@ -23,9 +23,8 @@ import http from 'http';
 const app = express();
 
 
-const localhostOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const isAllowedOrigin = (origin: string | undefined) => {
-    if (!origin || localhostOrigin.test(origin)) return true;
+    if (!origin) return true;
     return authConfig.trustedOrigins.some((trustedOrigin) => {
         if (!trustedOrigin.includes("*")) return trustedOrigin === origin;
         const [prefix, suffix] = trustedOrigin.split("*", 2);
@@ -90,8 +89,8 @@ connectDB().then(async () => {
     // age and expires any that run out of search budget (no_driver_found).
     searchSweeper = startDriverSearchSweeper(SEARCH_SWEEP_INTERVAL_MS);
     // Capture the http.Server so we can close it gracefully on shutdown.
-    server = app.listen(serverConfig.PORT, () => {
-        logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
+    server = app.listen(serverConfig.PORT, "0.0.0.0", () => {
+        logger.info(`Server is running on port ${serverConfig.PORT}`);
         logger.info(`Press Ctrl+C to stop the server.`);
     });
 }).catch((err) => {
