@@ -43,10 +43,12 @@ export const auth = betterAuth({
         enabled: true,
         minPasswordLength: 8,
         requireEmailVerification: !authConfig.disableEmailVerification,
-        autoSignIn: authConfig.disableEmailVerification === false,
+        // Only takes effect when email verification is off: with verification
+        // required Better Auth never issues a session at sign-up.
+        autoSignIn: true,
     },
     emailVerification: {
-        sendOnSignUp: true,
+        sendOnSignUp: !authConfig.disableEmailVerification,
         autoSignInAfterVerification: true,
         sendVerificationEmail: async ({ user, url }) => {
             await sendMail({

@@ -41,7 +41,7 @@ services:
           name: drio-socket-server
           envVarKey: RENDER_EXTERNAL_URL
       - key: DRIO_DISABLE_EMAIL_VERIFICATION
-        value: "false"
+        value: "true"
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
@@ -49,6 +49,8 @@ services:
       - key: MAIL_ID
         sync: false
       - key: MAIL_PASSWORD
+        sync: false
+      - key: RESEND_API_KEY
         sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false

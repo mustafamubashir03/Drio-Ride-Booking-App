@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import AuthLayout from "@/components/AuthLayout";
 import Logo from "@/components/Logo";
@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { CircleAlert, MailCheck } from "lucide-react";
 
 export default function Register() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const rawNext = searchParams.get("next");
   const redirectTo =
@@ -37,7 +38,7 @@ export default function Register() {
 
     setSubmitting(true);
 
-    const { error } = await authClient.signUp.email({
+    const { data, error } = await authClient.signUp.email({
       name,
       email,
       password,
@@ -47,6 +48,12 @@ export default function Register() {
     if (error) {
       setError(error.message ?? "Unable to create your account.");
       setSubmitting(false);
+      return;
+    }
+
+    // With email verification off the API returns a session straight away.
+    if (data?.token) {
+      navigate(redirectTo, { replace: true });
       return;
     }
 

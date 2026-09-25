@@ -91,7 +91,6 @@ export const authConfig: AuthConfig = {
         ? Array.from(new Set([betterAuthUrl, ...configuredTrustedOrigins]))
         : [betterAuthUrl, ...defaultTrustedOrigins],
     disableEmailVerification:
-        process.env.NODE_ENV !== "production" &&
-        (process.env.DRIO_DISABLE_EMAIL_VERIFICATION === "true" ||
-            process.env.DISABLE_EMAIL_VERIFICATION === "true"),
+        process.env.DRIO_DISABLE_EMAIL_VERIFICATION === "true" ||
+        process.env.DISABLE_EMAIL_VERIFICATION === "true",
 };
