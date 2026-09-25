@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
+import logger from "../config/logger.config";
 
 dotenv.config();
 
@@ -15,11 +16,25 @@ export const transporter = nodemailer.createTransport({
 });
 
 export async function sendMail(opts: { to: string; subject: string; html: string; text?: string }) {
-    return transporter.sendMail({
-        from: `Drio <${mailId}>`,
-        to: opts.to,
-        subject: opts.subject,
-        html: opts.html,
-        text: opts.text,
-    });
+    try {
+        return await transporter.sendMail({
+            from: `Drio <${mailId}>`,
+            to: opts.to,
+            subject: opts.subject,
+            html: opts.html,
+            text: opts.text,
+        });
+    } catch (error) {
+        const mailError = error as {
+            code?: string;
+            command?: string;
+            responseCode?: string | number;
+        };
+        logger.error("Email delivery failed", {
+            code: mailError.code ?? "UNKNOWN",
+            command: mailError.command ?? "UNKNOWN",
+            responseCode: mailError.responseCode ?? "UNKNOWN",
+        });
+        throw error;
+    }
 }
