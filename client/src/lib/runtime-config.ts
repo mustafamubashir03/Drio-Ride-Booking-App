@@ -9,14 +9,14 @@ const normalizeOrigin = (value: string | undefined): string => {
   }
 };
 
-const configuredApiUrl = normalizeOrigin(import.meta.env.VITE_API_URL);
+const configuredApiUrl = normalizeOrigin(import.meta.env.VITE_BETTER_AUTH_URL);
 const configuredSocketUrl = normalizeOrigin(import.meta.env.VITE_SOCKET_URL);
 const isLocalBuild = import.meta.env.VITE_DEPLOY_ENV === "local";
 const isLocalOrigin = (origin: string) =>
   origin.includes("localhost") || origin.includes("127.0.0.1");
 
 if (import.meta.env.PROD && !isLocalBuild && (!configuredApiUrl || isLocalOrigin(configuredApiUrl))) {
-  throw new Error("VITE_API_URL must be set to the deployed web API origin for a production build");
+  throw new Error("VITE_BETTER_AUTH_URL must be set to the deployed web API origin for a production build");
 }
 
 if (import.meta.env.PROD && !isLocalBuild && (!configuredSocketUrl || isLocalOrigin(configuredSocketUrl))) {
