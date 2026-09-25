@@ -34,8 +34,9 @@ const configuredOrigins = parseOrigins(
     process.env.BETTER_AUTH_TRUSTED_ORIGINS,
 );
 
+const isProduction = process.env.NODE_ENV === "production";
 const port = parsePort(process.env.PORT) ?? 5002;
-const socketPort = parsePort(process.env.SOCKET_PORT);
+const socketPort = isProduction ? undefined : parsePort(process.env.SOCKET_PORT);
 const splitSocketServer = socketPort !== undefined && socketPort !== port;
 
 const requireUrl = (name: string) => {
