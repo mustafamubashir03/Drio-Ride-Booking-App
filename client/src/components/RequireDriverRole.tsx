@@ -25,12 +25,12 @@ export default function RequireDriverRole({ children }: { children: ReactNode })
     // already reads. Admin who is also an approved driver keeps BOTH (admin
     // stays admin; never mutated here).
     if (user && (user.role === "driver" || user.role === "admin")) {
-      setCapability("allowed");
+      queueMicrotask(() => setCapability("allowed"));
       return;
     }
 
     if (!user) {
-      setCapability("denied");
+      queueMicrotask(() => setCapability("denied"));
       return;
     }
 

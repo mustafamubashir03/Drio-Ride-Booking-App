@@ -47,6 +47,38 @@ async function buildAuth() {
     return betterAuth({
         baseURL: authConfig.betterAuthUrl,
         trustedOrigins: authConfig.trustedOrigins,
+        onAPIError: {
+            // Auth failures (expired or mismatched OAuth state, cancelled
+            // consent, unverified email) used to land on "/?error=...", which
+            // the SPA immediately redirected to /dashboard and then /login,
+            // discarding the reason and leaving the user on a blank-feeling
+            // page. Send them to the login route with the code preserved so
+            // the UI can explain what happened. Derived from BETTER_AUTH_URL,
+            // which is already the frontend origin for this deployment.
+            errorURL: `${authConfig.betterAuthUrl.replace(/\/+$/, "")}/login`,
+            // Fallback only, used if errorURL is ever absent. The stock page
+            // references a --background variable it never defines and carries
+            // no branding, so a failure could render as an empty dark page.
+            // These are the existing Drio tokens; no new palette is introduced.
+            customizeDefaultErrorPage: {
+                colors: {
+                    background: "#282828",
+                    foreground: "#e6e6e6",
+                    primary: "#e5bd97",
+                    primaryForeground: "#282828",
+                    mutedForeground: "#b2b2b2",
+                    border: "rgba(255, 255, 255, 0.08)",
+                    destructive: "#f87171",
+                    gridColor: "rgba(255, 255, 255, 0.05)",
+                    cardBackground: "#3b3b3b",
+                    cornerBorder: "rgba(255, 255, 255, 0.08)",
+                },
+                font: {
+                    defaultFamily:
+                        "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                },
+            },
+        },
         database: mongodbAdapter(db, {
             client,
         }),

@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { ensureMyDriverApplication } from "@/hooks/queries/use-driver";
 import AuthLayout from "@/components/AuthLayout";
-import Logo from "@/components/Logo";
 import GoogleIcon from "@/components/GoogleIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,7 +46,7 @@ export default function DriverLogin() {
 
   useEffect(() => {
     if (!isPending && session) {
-      setRedirecting(true);
+      queueMicrotask(() => setRedirecting(true));
       void routeByApplicationState();
     }
   }, [isPending, session, queryClient]);
@@ -99,9 +98,6 @@ export default function DriverLogin() {
       subtitle="One account. Same credentials you already use - this is the driver sign-in for the Drio driver portal."
       badge="DRIVER PORTAL"
     >
-      <div className="mb-8 lg:hidden">
-        <Logo className="!text-[2rem]" />
-      </div>
 
       <Button
         type="button"

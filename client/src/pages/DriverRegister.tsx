@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { ensureMyDriverApplication } from "@/hooks/queries/use-driver";
 import AuthLayout from "@/components/AuthLayout";
-import Logo from "@/components/Logo";
 import GoogleIcon from "@/components/GoogleIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,7 +49,7 @@ export default function DriverRegister() {
 
   useEffect(() => {
     if (!isPending && session) {
-      setRedirecting(true);
+      queueMicrotask(() => setRedirecting(true));
       void routeByApplicationState();
     }
   }, [isPending, session, queryClient]);
@@ -132,10 +131,6 @@ export default function DriverRegister() {
         subtitle="Verification link sent. Confirm your email to start your driver application."
         badge="DRIVER PORTAL"
       >
-        <div className="mb-8 lg:hidden">
-          <Logo className="!text-[2rem]" />
-        </div>
-
         <div className="flex flex-col items-center text-center">
           <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/15">
             <MailCheck className="h-7 w-7 text-primary" />
@@ -189,15 +184,11 @@ export default function DriverRegister() {
       subtitle="Create your account to start your driver onboarding. One Drio account works for both riding and driving."
       badge="DRIVER PORTAL"
     >
-      <div className="mb-8 lg:hidden">
-        <Logo className="!text-[2rem]" />
-      </div>
-
-      <div className="mb-7">
-        <h2 className="font-serif text-[1.75rem] font-bold tracking-tight text-foreground leading-tight">
+      <div className="mb-5">
+        <h2 className="font-serif text-[1.65rem] font-bold tracking-tight text-foreground leading-tight">
           Create your driver account
         </h2>
-        <p className="mt-2 text-[13px] text-muted-foreground">
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Fill in your details below to get started.
         </p>
       </div>

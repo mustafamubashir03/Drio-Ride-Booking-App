@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import AuthLayout from "@/components/AuthLayout";
-import Logo from "@/components/Logo";
 import GoogleIcon from "@/components/GoogleIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +32,7 @@ export default function AdminLogin() {
 
   useEffect(() => {
     if (!isPending && session) {
-      setRedirecting(true);
+      queueMicrotask(() => setRedirecting(true));
       void routeToAdmin();
     }
   }, [isPending, session]);
@@ -89,9 +88,6 @@ export default function AdminLogin() {
       subtitle="Secure administrative access for Drio operations."
       badge="ADMIN PORTAL"
     >
-      <div className="mb-8 lg:hidden">
-        <Logo className="!text-[2rem]" />
-      </div>
 
       <Button
         type="button"

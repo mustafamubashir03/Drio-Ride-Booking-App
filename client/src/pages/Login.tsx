@@ -2,7 +2,6 @@ import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import AuthLayout from "@/components/AuthLayout";
-import Logo from "@/components/Logo";
 import GoogleIcon from "@/components/GoogleIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,15 +9,52 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { CircleAlert } from "lucide-react";
 
+/**
+ * Better Auth redirects authentication failures here with the reason in
+ * `?error=` (see onAPIError.errorURL in server/src/lib/auth.ts). The codes are
+ * mapped to plain language: the raw value is never shown, so nothing internal
+ * leaks into the UI.
+ */
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  // The single-use OAuth state cookie expired, or a second attempt consumed it.
+  state_mismatch: "Google sign-in expired or was interrupted. Please try again.",
+  state_not_found: "Google sign-in expired or was interrupted. Please try again.",
+  // The user backed out of the consent screen.
+  access_denied: "Google sign-in was cancelled.",
+  // Other known provider-side failures.
+  no_code: "Google sign-in did not complete. Please try again.",
+  invalid_code: "Google sign-in could not be verified. Please try again.",
+  unable_to_get_user_info: "Google sign-in could not be completed. Please try again.",
+  unable_to_link_account: "That Google account is linked to a different Drio account.",
+  account_already_linked_to_different_user:
+    "That Google account is linked to a different Drio account.",
+  email_does_not_match: "Google sign-in did not match your Drio account.",
+  // Known non-OAuth auth failures.
+  email_not_verified: "Please verify your email address before signing in.",
+  invalid_email_or_password: "That email and password combination is not recognised.",
+};
+
+function messageForAuthError(code: string | null): string | null {
+  if (!code) return null;
+  return (
+    AUTH_ERROR_MESSAGES[code] ?? "Something went wrong during sign-in. Please try again."
+  );
+}
+
 export default function Login() {
-  const rawNext = useSearchParams()[0].get("next");
+  const [searchParams] = useSearchParams();
+  const rawNext = searchParams.get("next");
   const redirectTo =
     rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//")
       ? rawNext
       : "/dashboard";
+  // Survives a failed Google round trip and explains itself on arrival. Seeded
+  // into the same state the form uses so a later submit clears it.
+  const [error, setError] = useState<string | null>(() =>
+    messageForAuthError(searchParams.get("error")),
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
@@ -58,18 +94,11 @@ export default function Login() {
       title="Your premium ride, every time."
       subtitle="Fast, dependable rides with a calm, refined experience from pickup to drop-off."
     >
-      <div className="mb-8 lg:hidden">
-        <Logo className="!text-[2rem]" />
-        <p className="mt-2 text-[13px] text-muted-foreground">
-          Your premium ride, every time.
-        </p>
-      </div>
-
-      <div className="mb-7">
-        <h2 className="font-serif text-[1.75rem] font-bold tracking-tight text-foreground leading-tight">
+      <div className="mb-5">
+        <h2 className="font-serif text-[1.65rem] font-bold tracking-tight text-foreground leading-tight">
           Welcome back
         </h2>
-        <p className="mt-2 text-[13px] text-muted-foreground">
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Sign in to continue your journey.
         </p>
       </div>

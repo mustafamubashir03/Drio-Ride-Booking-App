@@ -30,16 +30,17 @@ export default function AuthLayout({ children, title, subtitle, badge }: AuthLay
         {/* Ambient glow */}
         <div className="pointer-events-none absolute -bottom-24 -left-16 h-[360px] w-[360px] rounded-full bg-primary/12 blur-[100px]" />
 
-        <div className="absolute inset-x-0 bottom-0 z-10 px-6 pb-5 pt-24 text-center lg:hidden">
+        <div className="absolute inset-x-0 bottom-0 z-10 px-6 pb-5 pt-20 text-center lg:hidden">
+          <Logo className="mx-auto !text-[2.25rem]" />
           {badge && (
-            <span className="inline-block rounded-full bg-primary/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+            <span className="mt-2 inline-block rounded-full bg-primary/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
               {badge}
             </span>
           )}
-          <h1 className="mt-2 font-serif text-[1.45rem] font-bold leading-tight tracking-tight text-foreground">
+          <h1 className="mt-1.5 font-serif text-[1.35rem] font-bold leading-tight tracking-tight text-foreground">
             {title}
           </h1>
-          <p className="mx-auto mt-1.5 max-w-sm text-[12px] leading-relaxed text-muted-foreground">
+          <p className="mx-auto mt-1 max-w-sm text-[12px] leading-relaxed text-muted-foreground">
             {subtitle}
           </p>
         </div>

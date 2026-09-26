@@ -2,7 +2,6 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import AuthLayout from "@/components/AuthLayout";
-import Logo from "@/components/Logo";
 import GoogleIcon from "@/components/GoogleIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,13 +93,6 @@ export default function Register() {
         title="Join Drio today."
         subtitle="Create your account and start riding in minutes. Your premium experience awaits."
       >
-        <div className="mb-8 lg:hidden">
-          <Logo className="!text-[2rem]" />
-          <p className="mt-2 text-[13px] text-muted-foreground">
-            Your premium ride, every time.
-          </p>
-        </div>
-
         <div className="flex flex-col items-center text-center">
           <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/15">
             <MailCheck className="h-7 w-7 text-primary" />
@@ -153,18 +145,11 @@ export default function Register() {
       title="Join Drio today."
       subtitle="Create your account and start riding in minutes. Your premium experience awaits."
     >
-      <div className="mb-8 lg:hidden">
-        <Logo className="!text-[2rem]" />
-        <p className="mt-2 text-[13px] text-muted-foreground">
-          Your premium ride, every time.
-        </p>
-      </div>
-
-      <div className="mb-7">
-        <h2 className="font-serif text-[1.75rem] font-bold tracking-tight text-foreground leading-tight">
+      <div className="mb-5">
+        <h2 className="font-serif text-[1.65rem] font-bold tracking-tight text-foreground leading-tight">
           Create your account
         </h2>
-        <p className="mt-2 text-[13px] text-muted-foreground">
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Join Drio and get moving in minutes.
         </p>
       </div>
