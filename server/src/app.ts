@@ -4,6 +4,7 @@ import { authConfig } from './config/auth.config';
 import v1Router from './routers/v1/index.router';
 import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
+import { oauthDiagMiddleware } from './middlewares/oauth-diag.middleware';
 import { attachCorrelationIdMiddleware } from './middlewares/correlation.middleware';
 import { logForwardedClientIpMiddleware } from './middlewares/client-ip.middleware';
 import placesRouter from './routers/v1/places.router';
@@ -58,6 +59,11 @@ const resolveAuthNodeHandler = async (): Promise<AuthNodeHandler> => {
     }
     return authNodeHandler;
 };
+
+// TEMPORARY: read-only OAuth diagnostics. Observes /api/auth/sign-in/social and
+// /api/auth/callback/* at the HTTP boundary; changes no request, response or
+// Better Auth behaviour. Remove together with oauth-diag.middleware.ts.
+app.use(oauthDiagMiddleware);
 
 app.all("/api/auth/{*splat}", (req, res, next) => {
     resolveAuthNodeHandler()

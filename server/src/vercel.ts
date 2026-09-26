@@ -5,6 +5,7 @@ import { connectDB, initAuth } from "./lib/auth";
 import { connectMongoose } from "./lib/mongoose";
 import { seedRbac } from "./lib/rbac.seed";
 import { connectRedis } from "./lib/redis";
+import { logOAuthDiagConfig } from "./middlewares/oauth-diag.middleware";
 
 // Vercel function entrypoint: the same Express app that src/server.ts serves
 // through app.listen(), wrapped in a per-instance lazy bootstrap. Render keeps
@@ -26,6 +27,8 @@ const ensureReady = () => {
             await connectMongoose();
             await connectRedis();
             await seedRbac();
+            // TEMPORARY: one-shot runtime config block for the OAuth diagnosis.
+            logOAuthDiagConfig();
         })().catch((err) => {
             // Drop the cached rejection so a later cold invocation can retry
             // instead of replaying the failure for the life of the instance.

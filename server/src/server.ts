@@ -8,6 +8,7 @@ import { connectRedis, disconnectRedis } from "./lib/redis";
 import { SEARCH_SWEEP_INTERVAL_MS } from "./config/search.config";
 import { startDriverSearchSweeper } from "./services/driver-search.service";
 import http from 'http';
+import { logOAuthDiagConfig } from './middlewares/oauth-diag.middleware';
 
 
 
@@ -16,6 +17,8 @@ connectDB().then(async () => {
     await connectMongoose();
     await connectRedis();
     await seedRbac();
+    // TEMPORARY: one-shot runtime config block for the OAuth diagnosis.
+    logOAuthDiagConfig();
     // Periodic driver-search cycle: widens the dispatch radius as bookings
     // age and expires any that run out of search budget (no_driver_found).
     searchSweeper = startDriverSearchSweeper(SEARCH_SWEEP_INTERVAL_MS);
