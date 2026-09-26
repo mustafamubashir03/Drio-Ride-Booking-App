@@ -1,10 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Navigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
-import { fetchMyDriverApplication } from "@/lib/driver-api";
+import { ensureMyDriverApplication } from "@/hooks/queries/use-driver";
 
 export default function RequireDriverRole({ children }: { children: ReactNode }) {
   const { data: session, isPending } = authClient.useSession();
+  const queryClient = useQueryClient();
   const [capability, setCapability] = useState<
     "checking" | "allowed" | "denied"
   >("checking");
@@ -20,8 +22,8 @@ export default function RequireDriverRole({ children }: { children: ReactNode })
     // It is NEVER set to "driver" on approval server-side (approval only flips
     // DriverApplication.status). So capability = role driver/admin OR an
     // approved driver application - same durable truth the rest of the app
-    // already reads via fetchMyDriverApplication. Admin who is also an
-    // approved driver keeps BOTH (admin stays admin; never mutated here).
+    // already reads. Admin who is also an approved driver keeps BOTH (admin
+    // stays admin; never mutated here).
     if (user && (user.role === "driver" || user.role === "admin")) {
       setCapability("allowed");
       return;
@@ -32,7 +34,8 @@ export default function RequireDriverRole({ children }: { children: ReactNode })
       return;
     }
 
-    void fetchMyDriverApplication()
+    // One-shot gate check: reads the shared cache rather than subscribing.
+    void ensureMyDriverApplication(queryClient)
       .then((application) => {
         if (cancelled) return;
         setCapability(application?.status === "approved" ? "allowed" : "denied");
@@ -44,7 +47,7 @@ export default function RequireDriverRole({ children }: { children: ReactNode })
     return () => {
       cancelled = true;
     };
-  }, [session, isPending]);
+  }, [session, isPending, queryClient]);
 
   if (isPending || capability === "checking") {
     return (

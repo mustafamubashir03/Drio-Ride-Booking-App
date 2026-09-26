@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
-import { fetchMyDriverApplication } from "@/lib/driver-api";
+import { ensureMyDriverApplication } from "@/hooks/queries/use-driver";
 import AuthLayout from "@/components/AuthLayout";
 import Logo from "@/components/Logo";
 import GoogleIcon from "@/components/GoogleIcon";
@@ -14,6 +15,7 @@ import { CircleAlert } from "lucide-react";
 export default function DriverLogin() {
   const navigate = useNavigate();
   const { data: session, isPending } = authClient.useSession();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const rawNext = searchParams.get("next");
 
@@ -30,7 +32,7 @@ export default function DriverLogin() {
       return;
     }
     try {
-      const app = await fetchMyDriverApplication();
+      const app = await ensureMyDriverApplication(queryClient);
       if (!app) {
         navigate("/driver/onboarding", { replace: true });
       } else if (app.status === "approved") {
@@ -48,7 +50,7 @@ export default function DriverLogin() {
       setRedirecting(true);
       void routeByApplicationState();
     }
-  }, [isPending, session]);
+  }, [isPending, session, queryClient]);
 
   const handleEmailSubmit = async (e: FormEvent) => {
     e.preventDefault();

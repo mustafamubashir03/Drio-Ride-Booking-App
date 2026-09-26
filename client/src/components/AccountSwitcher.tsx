@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
-import { fetchMyDriverApplication } from "@/lib/driver-api";
+import { ensureMyDriverApplication } from "@/hooks/queries/use-driver";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AnimatePresence, motion } from "motion/react";
@@ -74,6 +75,7 @@ export function AccountSwitcher({
 }) {
   const navigate = useNavigate();
   const { data: session, isPending } = authClient.useSession();
+  const queryClient = useQueryClient();
   const [driverCapability, setDriverCapability] = useState<
     { hasAccess: boolean; destination: string; label: string; status: "approved" | "pending" | "rejected" | "none" } | null
   >(null);
@@ -97,9 +99,10 @@ export function AccountSwitcher({
         return;
       }
 
-      // Check driver capability
+      // Check driver capability. One-shot read through the shared cache, not a
+      // subscription: the menu only needs the value to label and route.
       try {
-        const app = await fetchMyDriverApplication();
+        const app = await ensureMyDriverApplication(queryClient);
         if (!cancelled) {
           setDriverCapability(getDriverCapability(app));
         }
@@ -124,7 +127,7 @@ export function AccountSwitcher({
     return () => {
       cancelled = true;
     };
-  }, [session, isPending]);
+  }, [session, isPending, queryClient]);
 
   useEffect(() => {
     if (!isOpen) return;

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   confirmBooking as confirmBookingApi,
   createDriverApplication as createDriverApplicationApi,
@@ -24,11 +24,27 @@ import { queryKeys } from "@/lib/query-keys";
 
 /* ── Driver application (onboarding) ─────────────────────────────────── */
 
+// Single definition of this resource, shared by the reactive hook below and the
+// imperative ensureMyDriverApplication() helper, so the cache key and fetcher
+// can never drift apart between render-driven and redirect-driven consumers.
+const myDriverApplicationQueryOptions = () => ({
+  queryKey: queryKeys.driverApplication.mine(),
+  queryFn: fetchMyDriverApplication,
+});
+
 export function useMyDriverApplicationQuery() {
-  return useQuery({
-    queryKey: queryKeys.driverApplication.mine(),
-    queryFn: fetchMyDriverApplication,
-  });
+  return useQuery(myDriverApplicationQueryOptions());
+}
+
+/**
+ * Imperative read for redirect and access-guard flows (sign-in routing, the
+ * driver role gate, the account switcher). These need the value once to make a
+ * decision, not a live subscription, so they read through the shared cache with
+ * ensureQueryData: the first caller populates it and later callers reuse it
+ * instead of issuing their own request.
+ */
+export function ensureMyDriverApplication(queryClient: QueryClient) {
+  return queryClient.ensureQueryData(myDriverApplicationQueryOptions());
 }
 
 export function useCreateDriverApplicationMutation() {
