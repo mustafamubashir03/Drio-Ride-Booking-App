@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
 import DocumentUploadSection from "@/components/DocumentUpload";
@@ -10,11 +10,9 @@ import { Separator } from "@/components/ui/separator";
 import { MotionPage } from "@/motion/MotionPage";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
 import {
-  createDriverApplication,
-  fetchMyDriverApplication,
-  type DriverApplication,
-  type DriverApplicationDocument,
-} from "@/lib/driver-api";
+  useCreateDriverApplicationMutation,
+  useMyDriverApplicationQuery,
+} from "@/hooks/queries/use-driver";
 import {
   AtSign,
   Car,
@@ -45,55 +43,28 @@ export default function DriverOnboarding() {
   const { data: session, isPending: sessionPending } = authClient.useSession();
   const user = (session as unknown as { user?: SessionUser } | null)?.user;
 
-  const [app, setApp] = useState<DriverApplication | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  // The driver application is stable server state shared with the status page,
+  // the profile page, the role gate and the account switcher, so it is read
+  // from the shared query rather than fetched per screen.
+  const {
+    data: app,
+    isPending: loading,
+    error: loadError,
+  } = useMyDriverApplicationQuery();
+  const createMutation = useCreateDriverApplicationMutation();
   const [createError, setCreateError] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchMyDriverApplication()
-      .then((application) => {
-        if (cancelled) return;
-        setLoadError(null);
-        setApp(application);
-        if (application?.status === "approved") {
-          navigate("/driver/dashboard", { replace: true });
-          return;
-        }
-        if (application?.status === "rejected") {
-          navigate("/driver/status", { replace: true });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLoadError("Could not load your driver application.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [navigate]);
 
   const handleStart = async () => {
     setCreateError(null);
-    setCreating(true);
     try {
-      const application = await createDriverApplication();
-      setApp(application);
+      // The mutation writes the new application into the shared cache, so this
+      // screen and every other consumer see it without another request.
+      await createMutation.mutateAsync();
     } catch (err) {
       setCreateError(
         err instanceof Error ? err.message : "Could not start your application."
       );
-    } finally {
-      setCreating(false);
     }
-  };
-
-  const handleDocumentsUpdated = (documents: DriverApplicationDocument[]) => {
-    setApp((current) => (current ? { ...current, documents } : current));
   };
 
   if (sessionPending || loading) {
@@ -108,8 +79,18 @@ export default function DriverOnboarding() {
     );
   }
 
+  // An approved driver belongs in the portal and a rejected one on the status
+  // page, so this screen is not theirs to render.
+  if (app?.status === "approved") {
+    return <Navigate to="/driver/dashboard" replace />;
+  }
+  if (app?.status === "rejected") {
+    return <Navigate to="/driver/status" replace />;
+  }
+
   const hasApplication = Boolean(app);
-  const visibleError = loadError ?? createError;
+  const visibleError =
+    (loadError instanceof Error ? loadError.message : loadError) ?? createError;
 
   return (
     <MotionPage className="flex min-h-dvh flex-col bg-background">
@@ -268,8 +249,7 @@ export default function DriverOnboarding() {
               <DocumentUploadSection
                 documents={app?.documents ?? []}
                 disabled={false}
-                onUploaded={handleDocumentsUpdated}
-              />
+                      />
             )}
             <p className="mt-3 text-[12px] leading-relaxed text-muted-foreground">
               Documents are uploaded securely to Drio&apos;s review system and are
@@ -316,10 +296,10 @@ export default function DriverOnboarding() {
                       size="lg"
                       className="mt-5 w-full font-semibold hover:scale-[1.01] motion-reduce:scale-100 motion-reduce:transition-none"
                       onClick={handleStart}
-                      disabled={creating}
+                      disabled={createMutation.isPending}
                     >
-                      {creating && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />}
-                      {creating ? "Starting…" : "Start my application"}
+                      {createMutation.isPending && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />}
+                      {createMutation.isPending ? "Starting…" : "Start my application"}
                     </Button>
                   </>
                 )}

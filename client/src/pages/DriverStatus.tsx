@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
+import { useMyDriverApplicationQuery } from "@/hooks/queries/use-driver";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,6 @@ import { Separator } from "@/components/ui/separator";
 import { MotionPage } from "@/motion/MotionPage";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
 import {
-  fetchMyDriverApplication,
   type DriverApplication,
 } from "@/lib/driver-api";
 import {
@@ -72,31 +71,15 @@ const statusMeta: Record<
 
 export default function DriverStatus() {
   const navigate = useNavigate();
-  const [app, setApp] = useState<DriverApplication | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Shared with onboarding, profile, the role gate and the account switcher:
+  // one query, one request.
+  const { data: app, isPending: loading, error } = useMyDriverApplicationQuery();
+  const loadError = error instanceof Error ? error.message : error;
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchMyDriverApplication()
-      .then((application) => {
-        if (cancelled) return;
-        if (!application) {
-          navigate("/driver/onboarding", { replace: true });
-          return;
-        }
-        setApp(application);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Could not load your application.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [navigate]);
+  // No application at all means the driver never started one.
+  if (!loading && app === null && !error) {
+    return <Navigate to="/driver/onboarding" replace />;
+  }
 
   if (loading) {
     return (
@@ -121,7 +104,7 @@ export default function DriverStatus() {
             <CircleAlert className="h-5 w-5 text-destructive" />
           </span>
           <p className="text-[14px] font-semibold text-destructive">Could not load your application</p>
-          <p className="mt-1.5 text-[12px] leading-relaxed break-words text-muted-foreground [overflow-wrap:anywhere]">{error ?? "Try again in a moment."}</p>
+          <p className="mt-1.5 text-[12px] leading-relaxed break-words text-muted-foreground [overflow-wrap:anywhere]">{loadError ?? "Try again in a moment."}</p>
           <Button className="mt-5" variant="outline" onClick={() => window.location.reload()}>
             Try again
           </Button>
@@ -184,13 +167,13 @@ export default function DriverStatus() {
           </div>
         </div>
 
-        {error && (
+        {loadError && (
           <div
             role="alert"
             className="mb-5 flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-[13px] font-medium break-words text-destructive [overflow-wrap:anywhere]"
           >
             <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-            {error}
+            {loadError}
           </div>
         )}
 

@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -6,11 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
-  fetchDriverRating,
-  fetchMyDriverApplication,
+  useDriverRatingQuery,
+  useMyDriverApplicationQuery,
+} from "@/hooks/queries/use-driver";
+import {
   type DriverApplication,
 } from "@/lib/driver-api";
-import type { DriverRatingSummary } from "@/lib/bookings-api";
 import { formatDate } from "@/lib/format";
 import { Car, CheckCircle2, CircleAlert, Clock3, FileImage, FileText, Info, Star, User as UserIcon, XCircle } from "lucide-react";
 import { MotionPage } from "@/motion/MotionPage";
@@ -59,38 +59,16 @@ export default function DriverProfile() {
     user?: { name?: string; email?: string; image?: string | null; role?: string };
   })?.user;
 
-  const [app, setApp] = useState<DriverApplication | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [rating, setRating] = useState<DriverRatingSummary | null>(null);
-  const [ratingStatus, setRatingStatus] = useState<"loading" | "success" | "error">("loading");
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchMyDriverApplication()
-      .then((application) => {
-        if (cancelled) return;
-        setApp(application);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Could not load your driver application.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    fetchDriverRating()
-      .then((value) => {
-        if (cancelled) return;
-        setRating(value);
-        setRatingStatus("success");
-      })
-      .catch(() => {
-        if (!cancelled) setRatingStatus("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Both are stable server data: the application is shared with onboarding,
+  // status, the role gate and the account switcher, and the rating aggregate
+  // only changes when a review is submitted.
+  const { data: app, isPending: loading, error } = useMyDriverApplicationQuery();
+  const {
+    data: rating,
+    isPending: ratingPending,
+    isError: ratingFailed,
+  } = useDriverRatingQuery();
+  const loadError = error instanceof Error ? error.message : error;
 
   const meta = app ? statusMeta[app.status] : null;
   const StatusIcon = meta?.icon;
@@ -102,13 +80,13 @@ export default function DriverProfile() {
   return (
     <MotionPage className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto p-4 lg:p-8">
       <div className="mx-auto w-full min-w-0 max-w-2xl space-y-5">
-        {error && (
+        {loadError && (
           <div
             role="alert"
             className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-[13px] font-medium break-words text-destructive [overflow-wrap:anywhere]"
           >
             <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-            {error}
+            {loadError}
           </div>
         )}
 
@@ -131,14 +109,14 @@ export default function DriverProfile() {
                 </p>
                 <p className="truncate text-[12px] text-muted-foreground sm:text-[13px]">{user?.email}</p>
                 <p className="mt-1 flex items-center gap-1 text-[11.5px] text-muted-foreground">
-                  {ratingStatus === "success" && rating?.average != null && rating.count > 0 ? (
+                  {!ratingPending && !ratingFailed && rating?.average != null && rating.count > 0 ? (
                     <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" aria-hidden />
                   ) : (
                     <Star className="h-3.5 w-3.5 text-muted-foreground/60" aria-hidden />
                   )}
-                  {ratingStatus === "loading" ? (
+                  {ratingPending ? (
                     "Loading rating…"
-                  ) : ratingStatus === "error" ? (
+                  ) : ratingFailed ? (
                     "Rating unavailable"
                   ) : rating?.average != null && rating.count > 0 ? (
                     <>
@@ -181,7 +159,7 @@ export default function DriverProfile() {
                 <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-primary motion-reduce:animate-none" aria-hidden />
                 <p className="text-[12px] text-muted-foreground">Loading…</p>
               </div>
-            ) : error ? (
+            ) : loadError ? (
               <div className="rounded-xl border border-destructive/20 bg-destructive/8 px-4 py-3">
                 <p className="text-[12px] leading-relaxed text-muted-foreground">
                   We couldn&apos;t load your driver application.

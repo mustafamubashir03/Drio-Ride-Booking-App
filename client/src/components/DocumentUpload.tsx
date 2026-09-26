@@ -3,10 +3,10 @@ import {
   DRIVER_DOCUMENT_LABELS,
   DRIVER_DOCUMENT_MAX_SIZE,
   DRIVER_DOCUMENT_TYPES,
-  uploadDriverDocument,
   type DriverApplicationDocument,
   type DriverDocumentType,
 } from "@/lib/driver-api";
+import { useUploadDriverDocumentMutation } from "@/hooks/queries/use-driver";
 import { Button } from "@/components/ui/button";
 import {
   CheckCircle2,
@@ -56,13 +56,14 @@ type SlotProps = {
   documentType: DriverDocumentType;
   existing: DriverApplicationDocument | undefined;
   disabled: boolean;
-  onUploaded: (documents: DriverApplicationDocument[]) => void;
 };
 
-function DocumentSlot({ documentType, existing, disabled, onUploaded }: SlotProps) {
+function DocumentSlot({ documentType, existing, disabled }: SlotProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The File itself is never placed in the cache: the mutation carries it to
+  // the API and only the server-side document metadata is cached.
+  const uploadMutation = useUploadDriverDocumentMutation();
 
   const handlePick = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -80,20 +81,12 @@ function DocumentSlot({ documentType, existing, disabled, onUploaded }: SlotProp
       return;
     }
 
-    setUploading(true);
-    uploadDriverDocument({ documentType, file })
-      .then((result) => {
-        const list = Array.isArray(result.documents) ? result.documents : [];
-        onUploaded(list);
-        setError(null);
-      })
+    uploadMutation
+      .mutateAsync({ documentType, file })
       .catch((err: unknown) => {
         setError(
           err instanceof Error ? err.message : "Could not upload your document. Please try again."
         );
-      })
-      .finally(() => {
-        setUploading(false);
       });
   };
 
@@ -179,10 +172,10 @@ function DocumentSlot({ documentType, existing, disabled, onUploaded }: SlotProp
             type="button"
             variant={existing ? "outline" : "default"}
             size="sm"
-            disabled={disabled || uploading}
+            disabled={disabled || uploadMutation.isPending}
             onClick={() => inputRef.current?.click()}
           >
-            {uploading ? (
+            {uploadMutation.isPending ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                 Uploading…
@@ -208,7 +201,6 @@ function DocumentSlot({ documentType, existing, disabled, onUploaded }: SlotProp
 export default function DocumentUploadSection(props: {
   documents: DriverApplicationDocument[];
   disabled: boolean;
-  onUploaded: (documents: DriverApplicationDocument[]) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -218,7 +210,6 @@ export default function DocumentUploadSection(props: {
           documentType={type}
           existing={props.documents.find((doc) => doc.documentType === type)}
           disabled={props.disabled}
-          onUploaded={props.onUploaded}
         />
       ))}
     </div>
