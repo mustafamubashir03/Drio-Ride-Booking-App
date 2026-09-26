@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
 import Map from "@/components/Map";
@@ -17,7 +17,6 @@ import { type BookingCancelledBy, type BookingDriverInfo, type BookingDriverLoca
 import { useBookingsQuery, useCancelBookingMutation, useSubmitBookingReviewMutation } from "@/hooks/queries/use-bookings";
 import { queryKeys } from "@/lib/query-keys";
 import { formatFare } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/runtime-config";
 import type { PlaceResult, SelectedLocation, RouteResult } from "@/lib/places-api";
 import {
@@ -34,8 +33,6 @@ import {
   CircleDollarSign,
   Star,
   X,
-  ChevronUp,
-  MapPinned,
 } from "lucide-react";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
 import { MotionPage } from "@/motion/MotionPage";
@@ -280,11 +277,6 @@ export default function Dashboard() {
   const [historyReviewBusy, setHistoryReviewBusy] = useState(false);
   const [historyReviewError, setHistoryReviewError] = useState<string | null>(null);
   const mobileSheetRef = useRef<HTMLDivElement>(null);
-  // Desktop-only presentation state for the booking overlay. Purely visual: it
-  // does not touch booking, matching, socket, location or route state, and
-  // collapsing never unmounts the panel content, so nothing is re-fetched or
-  // discarded.
-  const [desktopPanelCollapsed, setDesktopPanelCollapsed] = useState(false);
   // Which location-permission outcome we are in, so the sheet can explain it
   // instead of leaving the pickup field mysteriously empty. Seeded from
   // navigator so the unsupported case never needs a state write inside an
@@ -1824,17 +1816,7 @@ export default function Dashboard() {
                  <RealtimeBadge connected={socketConnected} compact />
               </div>
             </div>
-            {/* The map fills the whole area at every width. At lg the booking
-                panel is a floating overlay on top of it rather than a column
-                beside it, so the map is never squeezed into a narrow strip.
-
-                --panel-w is declared here, on the shared ancestor, so the
-                booking overlay and the ride-status panel beside it are sized
-                from one value and can never drift out of alignment. */}
-            <div
-              className="relative min-h-0 w-full flex-1 overflow-hidden bg-drio-deep"
-              style={{ "--panel-w": "min(26rem, 34vw)" } as CSSProperties}
-            >
+            <div className="relative min-h-0 w-full flex-1 overflow-hidden bg-drio-deep lg:relative lg:inset-auto lg:z-0 lg:h-auto lg:w-auto lg:flex-1 lg:order-2">
               <Map
                 className="h-full w-full"
                 from={fromLocation}
@@ -1851,85 +1833,13 @@ export default function Dashboard() {
                 <div className="h-[360px] w-[360px] rounded-full bg-primary/6 blur-3xl" />
               </div>
             </div>
-            {/* Desktop booking overlay: a fixed-size floating card pinned to the
-                top-left of the map. Width is capped so From/To and the ride
-                controls stay comfortable, and height is capped so it can never
-                grow into the map. The inner column scrolls only when the content
-                genuinely exceeds that height, so short content does not get a
-                scrollbar it does not need. */}
-            <div
-              className={cn(
-                "pointer-events-none absolute left-0 top-0 z-20 hidden lg:block",
-                desktopPanelCollapsed && "hidden",
-              )}
-              style={{ width: "var(--panel-w)" }}
-            >
-              <div
-                className={cn(
-                  "pointer-events-auto flex max-h-[min(38rem,calc(100%-2rem))] flex-col",
-                  "overflow-hidden rounded-2xl border border-border/70 bg-background/95",
-                  "shadow-[0_18px_50px_rgba(0,0,0,0.42)] backdrop-blur-md",
-                )}
-              >
-                {/* The one control for this panel, mirroring the mobile sheet. */}
-                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2.5">
-                  <span className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-                    {rideBooked ? "Your ride" : cancelOpen ? "Cancel your ride" : "Where to?"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setDesktopPanelCollapsed(true)}
-                    aria-expanded={true}
-                    aria-label="Collapse booking panel"
-                    className={cn(
-                      "flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-semibold",
-                      "text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-                    )}
-                  >
-                    <ChevronUp className="h-4 w-4 rotate-180" aria-hidden="true" />
-                    Collapse
-                  </button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">
-                  {renderBookingSurface("desktop")}
-                </div>
+            <div className="relative z-10 hidden w-full shrink-0 lg:static lg:inset-auto lg:z-auto lg:flex lg:min-h-0 lg:w-[380px] lg:shrink-0 lg:flex-col lg:order-1 lg:overflow-y-auto lg:border-r lg:border-border lg:bg-background">
+              <div className="flex-1 p-6">
+                {renderBookingSurface("desktop")}
               </div>
             </div>
-            {/* Collapsed: a small pill in the same corner, so expanding puts the
-                panel back exactly where it was. State and data are untouched. */}
-            {desktopPanelCollapsed && (
-              <button
-                type="button"
-                onClick={() => setDesktopPanelCollapsed(false)}
-                aria-expanded={false}
-                aria-label="Expand booking panel"
-                className={cn(
-                  "absolute bottom-6 left-4 z-20 hidden items-center gap-2 lg:flex",
-                  "rounded-full border border-border/70 bg-sidebar/85 px-4 py-2.5",
-                  "text-[12px] font-semibold text-foreground",
-                  "shadow-[0_8px_24px_rgba(0,0,0,0.30)] backdrop-blur-md",
-                  "transition-colors hover:bg-sidebar",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-                  "motion-safe:active:scale-[0.98]",
-                )}
-              >
-                <MapPinned className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-                Show booking
-              </button>
-            )}
-            {/* Sits to the right of the booking overlay so the two never overlap.
-                Reads the same custom property the overlay is sized with. */}
-            <div
-              className={cn(
-                "pointer-events-none absolute bottom-0 right-0 z-10 hidden lg:block",
-                desktopPanelCollapsed ? "left-0" : "left-[var(--panel-w)]",
-              )}
-              style={{ maxHeight: "55%" }}
-            >
-              <div className="pointer-events-auto h-full max-h-[55%] overflow-y-auto overscroll-contain">
-                {renderRideStatusSurface("desktop")}
-              </div>
+            <div className="absolute inset-x-[380px] bottom-0 z-10 hidden max-h-[55%] overflow-y-auto overscroll-contain lg:block">
+              {renderRideStatusSurface("desktop")}
             </div>
             {/* Mobile: a real expand/collapse sheet floating over the map, so
                 the map stays visible above it. Collapsed shows the pickup pair,

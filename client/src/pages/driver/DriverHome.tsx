@@ -325,10 +325,7 @@ useEffect(() => {
 
   return (
     <MotionPage className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row lg:overflow-hidden">
-      {/* The map fills the whole area at every width. At lg the driver panel is
-          a floating overlay on top of it rather than a column beside it, so the
-          map is never squeezed into a narrow strip. */}
-      <div className="relative min-h-0 w-full flex-1 overflow-hidden bg-drio-deep">
+      <div className="relative min-h-0 w-full flex-1 overflow-hidden bg-drio-deep lg:relative lg:inset-auto lg:z-0 lg:h-auto lg:w-auto lg:flex-1 lg:order-2">
         <Map
           className="h-full w-full"
           from={from}
@@ -346,12 +343,8 @@ useEffect(() => {
       <MobileSheet
         peekHeight={240}
         label="Expand or collapse driver panel"
-        desktopCollapsible
-        desktopCollapseLabel="Collapse panel"
-        desktopExpandLabel="Show panel"
-        desktopTitle={online ? "You are online" : "You are offline"}
-        desktopClassName="lg:pointer-events-auto lg:absolute lg:inset-y-4 lg:left-4 lg:right-auto lg:z-20 lg:flex lg:w-[min(24rem,32vw)] lg:max-w-[24rem] lg:flex-col lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border/70 lg:bg-background/95 lg:shadow-[0_18px_50px_rgba(0,0,0,0.42)] lg:backdrop-blur-md"
-        contentClassName="p-4 lg:p-5"
+        desktopClassName="lg:pointer-events-auto lg:static lg:inset-auto lg:z-10 lg:order-1 lg:flex lg:w-[380px] lg:flex-none lg:flex-col lg:border-r lg:border-border lg:bg-background"
+        contentClassName="p-4 lg:p-6"
         peekHint={
           <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
             {online ? "You are online" : "You are offline"}

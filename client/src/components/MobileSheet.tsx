@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode, type Ref } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronUp, MapPinned } from "lucide-react";
+import { ChevronUp } from "lucide-react";
 import { useMotionSystem } from "@/motion/use-motion";
 import { cn } from "@/lib/utils";
 
 /**
- * Bottom sheet with three explicit stops and one control.
+ * Mobile bottom sheet with three explicit stops and one control.
  *
  * Stops, in the order the control cycles through them:
  *   collapsed  the sheet is just its handle, flush with the bottom edge
@@ -24,6 +24,9 @@ import { cn } from "@/lib/utils";
  *
  * No effect, map update, location change or route change can move the sheet, so
  * the map camera stays independent of it.
+ *
+ * At `lg` this is still only a static side panel, exactly as before. All of the
+ * three-stop behaviour and all of the animation is scoped below `lg`.
  */
 type SheetStop = "collapsed" | "peek" | "expanded";
 
@@ -35,6 +38,8 @@ const NEXT_STOP: Record<SheetStop, SheetStop> = {
 
 /** Handle height, fixed so the collapsed stop is exact rather than measured. */
 const HANDLE_HEIGHT = 44;
+
+const DESKTOP_QUERY = "(min-width: 1024px)";
 
 export default function MobileSheet({
   children,
@@ -52,18 +57,6 @@ export default function MobileSheet({
   peekHint,
   /** At `lg` the same DOM becomes a static side panel via these classes. */
   desktopClassName,
-  /**
-   * Opt in to a desktop collapse control. Off by default, so the driver's
-   * existing static side panel is unaffected until a caller asks for it.
-   */
-  desktopCollapsible = false,
-  /** Controlled desktop collapse state. Omit to let the sheet own it. */
-  desktopCollapsed,
-  onDesktopCollapsedChange,
-  desktopCollapseLabel = "Collapse panel",
-  desktopExpandLabel = "Expand panel",
-  /** Short summary shown beside the desktop collapse control. */
-  desktopTitle,
 }: {
   /**
    * Either a node, or a render prop receiving the current state. The render-prop
@@ -87,22 +80,28 @@ export default function MobileSheet({
   onFieldFocus?: (field: HTMLElement) => void;
   peekHint?: ReactNode;
   desktopClassName?: string;
-  desktopCollapsible?: boolean;
-  desktopCollapsed?: boolean;
-  onDesktopCollapsedChange?: (collapsed: boolean) => void;
-  desktopCollapseLabel?: string;
-  desktopExpandLabel?: string;
-  desktopTitle?: string;
 }) {
   const [stop, setStop] = useState<SheetStop>("peek");
-  const [isDesktop, setIsDesktop] = useState(false);
-  const [uncontrolledCollapsed, setUncontrolledCollapsed] = useState(false);
-  // The three stops are resolved to PIXELS so the spring animates between one
-  // unit only. Mixing a number with an "svh" string is what made the travel
-  // unreliable, and it is also why the height cap below is kept in plain CSS
-  // as the authority rather than left to an animation.
+  // Seeded synchronously, not from an effect. Reading this in an effect meant
+  // the first paint on a desktop screen still ran the mobile branch and briefly
+  // applied the phone's resting height before correcting itself.
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(DESKTOP_QUERY).matches,
+  );
+  // The three stops resolve to PIXELS so the spring animates between one unit
+  // only. Mixing a number with an "svh" string is what made the travel
+  // unreliable, and it is why the svh cap below is kept in plain CSS as the
+  // authority rather than left to the animation.
   const [viewportHeight, setViewportHeight] = useState(0);
   const { reduced, transition } = useMotionSystem();
+
+  useEffect(() => {
+    if (!desktopClassName) return;
+    const mq = window.matchMedia(DESKTOP_QUERY);
+    const sync = () => setIsDesktop(mq.matches);
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [desktopClassName]);
 
   useEffect(() => {
     const sync = () => setViewportHeight(window.innerHeight);
@@ -115,57 +114,10 @@ export default function MobileSheet({
     };
   }, []);
 
-  useEffect(() => {
-    if (!desktopClassName) return;
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const sync = () => setIsDesktop(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, [desktopClassName]);
-
   const panelMode = Boolean(desktopClassName) && isDesktop;
   const expanded = stop === "expanded";
-  const isCollapsed =
-    panelMode && desktopCollapsible
-      ? desktopCollapsed ?? uncontrolledCollapsed
-      : false;
-  const setCollapsed = (next: boolean) => {
-    if (onDesktopCollapsedChange) onDesktopCollapsedChange(next);
-    if (desktopCollapsed === undefined) setUncontrolledCollapsed(next);
-  };
-
   const nextStop = NEXT_STOP[stop];
 
-  // Collapsed on desktop: a small pill in the bottom-left corner. The content
-  // stays mounted (and therefore keeps its state) but is hidden, so nothing is
-  // unmounted, no effect re-runs, and no data is discarded.
-  if (panelMode && desktopCollapsible && isCollapsed) {
-    return (
-      <div className={cn("pointer-events-none absolute bottom-0 z-20 lg:pointer-events-auto", desktopClassName, className)}>
-        <button
-          type="button"
-          onClick={() => setCollapsed(false)}
-          aria-expanded={false}
-          aria-label={desktopExpandLabel}
-          className={cn(
-            "pointer-events-auto m-4 flex items-center gap-2 rounded-full border border-border/70 bg-sidebar/85 px-4 py-2.5",
-            "text-[12px] font-semibold text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.30)] backdrop-blur-md",
-            "transition-colors hover:bg-sidebar",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-            "motion-safe:active:scale-[0.98]",
-          )}
-        >
-          <MapPinned className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-          {desktopExpandLabel}
-        </button>
-      </div>
-    );
-  }
-
-  // The sheet's height, in pixels. Desktop panel mode is left unconstrained so
-  // the card can be as tall as its column layout needs.
-  //
   // Before the first measurement (and on a server render) there is no viewport
   // to measure, so it falls back to the resting height rather than guessing.
   const stopHeight = panelMode
@@ -183,63 +135,25 @@ export default function MobileSheet({
         desktopClassName,
         className,
       )}
-      style={
-        panelMode
-          ? undefined
-          : {
-              // The cap stays in plain CSS and stays the authority. It is what
-              // guarantees the sheet can never exceed the viewport even if the
-              // measured pixel height is generous, and it is correct on a phone
-              // because "svh" excludes the browser chrome that innerHeight
-              // includes.
-              maxHeight: `${expandedVh}svh`,
-              paddingBottom: "env(safe-area-inset-bottom)",
-            }
-      }
+      style={panelMode ? undefined : { paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <motion.div
         className={cn(
           "pointer-events-auto flex flex-col overflow-hidden rounded-t-3xl border-x border-t border-border bg-card shadow-[0_-8px_32px_rgba(0,0,0,0.45)]",
-          // A collapsible desktop panel supplies its own card chrome (surface,
-          // border, radius, height cap) via desktopClassName, so only a
-          // non-collapsible desktop panel is flattened into a bare column.
           desktopClassName &&
-            !desktopCollapsible &&
             "lg:h-auto lg:max-h-none lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none",
-          // The collapsible card is bounded so it can never grow into the map.
-          desktopCollapsible &&
-            "lg:h-auto lg:max-h-[calc(100%-3rem)] lg:rounded-2xl lg:border lg:border-border/70 lg:bg-background/95 lg:shadow-[0_18px_50px_rgba(0,0,0,0.42)] lg:backdrop-blur-md",
         )}
         // Height is the animated value, in pixels at every stop, so the spring
         // carries the whole travel between consistent units.
         animate={panelMode ? undefined : { height: stopHeight }}
         initial={false}
         transition={transition.spring}
+        // The cap stays in plain CSS and stays the authority. It guarantees the
+        // sheet can never exceed the viewport even if the measured pixel height
+        // is generous, and it is correct on a phone because "svh" excludes the
+        // browser chrome that innerHeight includes.
+        style={panelMode ? undefined : { maxHeight: `${expandedVh}svh` }}
       >
-        {/* Desktop collapse control, when the caller opted in. Sits at the top of
-            the floating panel, mirroring the mobile handle below. */}
-        {panelMode && desktopCollapsible && (
-          <div className="hidden shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2 lg:flex">
-            <span className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-              {desktopTitle ?? ""}
-            </span>
-            <button
-              type="button"
-              onClick={() => setCollapsed(true)}
-              aria-expanded={true}
-              aria-label={desktopCollapseLabel}
-              className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-semibold text-muted-foreground",
-                "transition-colors hover:bg-white/5 hover:text-foreground",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-              )}
-            >
-              <ChevronUp className="h-4 w-4 rotate-180" aria-hidden="true" />
-              Collapse
-            </button>
-          </div>
-        )}
-
         {/* The one and only control. Fixed hit area, so it is always reachable and
             always does exactly one thing: advance to the next stop. */}
         <button
@@ -297,10 +211,14 @@ export default function MobileSheet({
           )}
         </AnimatePresence>
 
-        {/* Scrolls internally, and there is no drag handler, so scrolling here can
-            never move the sheet; overscroll-contain stops the chain reaching the
-            map. The collapsed stop keeps this mounted so nothing is unmounted
-            and no form state is lost. */}
+        {/* Bounded and scrollable at EVERY stop. The card carries an explicit
+            pixel height, so a plain flex child with min-h-0 is what makes the
+            content scroll instead of being clipped away. Previously this was
+            "flex-1" only when expanded and "shrink-0" otherwise, so at the
+            smaller stops the element took its full content height and
+            overflow-y-auto had nothing to scroll: the lower half of the form was
+            unreachable. The collapsed stop keeps this mounted so nothing is
+            unmounted and no form state is lost. */}
         <div
           ref={contentRef}
           onFocusCapture={(event) => {
@@ -315,13 +233,6 @@ export default function MobileSheet({
           }}
           aria-hidden={stop === "collapsed" || undefined}
           className={cn(
-            // Bounded and scrollable at EVERY stop. The card now carries an
-            // explicit pixel height, so a plain flex child with min-h-0 is what
-            // makes the content scroll instead of being clipped away. Previously
-            // this was "flex-1" only when expanded and "shrink-0" otherwise, so
-            // at the smaller stops the element took its full content height and
-            // overflow-y-auto had nothing to scroll: the lower half of the form
-            // was unreachable.
             "overscroll-contain overflow-y-auto px-4 pb-4",
             "min-h-0 flex-1",
             desktopClassName && "lg:overflow-y-auto",
