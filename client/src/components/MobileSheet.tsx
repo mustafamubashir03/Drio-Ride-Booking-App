@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode, type Ref } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronUp } from "lucide-react";
+import { ChevronUp, MapPinned } from "lucide-react";
 import { useMotionSystem } from "@/motion/use-motion";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +32,18 @@ export default function MobileSheet({
   peekHint,
   /** At `lg` the same DOM becomes a static side panel via these classes. */
   desktopClassName,
+  /**
+   * Opt in to a desktop collapse control. Off by default, so the driver's
+   * existing static side panel is unaffected until a caller asks for it.
+   */
+  desktopCollapsible = false,
+  /** Controlled desktop collapse state. Omit to let the sheet own it. */
+  desktopCollapsed,
+  onDesktopCollapsedChange,
+  desktopCollapseLabel = "Collapse panel",
+  desktopExpandLabel = "Expand panel",
+  /** Short summary shown beside the desktop collapse control. */
+  desktopTitle,
 }: {
   /**
    * Either a node, or a render prop receiving the current expanded state. The
@@ -39,7 +51,7 @@ export default function MobileSheet({
    * summary while keeping ONE state owner, so the collapsed and expanded views
    * can never disagree about booking or ride status.
    */
-  children: ReactNode | ((state: { expanded: boolean }) => ReactNode);
+  children: ReactNode | ((state: { expanded: boolean; panelMode: boolean }) => ReactNode);
   peekHeight?: number;
   expandedVh?: number;
   label?: string;
@@ -50,9 +62,16 @@ export default function MobileSheet({
   onFieldFocus?: (field: HTMLElement) => void;
   peekHint?: ReactNode;
   desktopClassName?: string;
+  desktopCollapsible?: boolean;
+  desktopCollapsed?: boolean;
+  onDesktopCollapsedChange?: (collapsed: boolean) => void;
+  desktopCollapseLabel?: string;
+  desktopExpandLabel?: string;
+  desktopTitle?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [uncontrolledCollapsed, setUncontrolledCollapsed] = useState(false);
   const { reduced } = useMotionSystem();
 
   useEffect(() => {
@@ -65,6 +84,40 @@ export default function MobileSheet({
   }, [desktopClassName]);
 
   const panelMode = Boolean(desktopClassName) && isDesktop;
+  const isCollapsed =
+    panelMode && desktopCollapsible
+      ? desktopCollapsed ?? uncontrolledCollapsed
+      : false;
+  const setCollapsed = (next: boolean) => {
+    if (onDesktopCollapsedChange) onDesktopCollapsedChange(next);
+    if (desktopCollapsed === undefined) setUncontrolledCollapsed(next);
+  };
+
+  // Collapsed on desktop: a small pill in the bottom-left corner. The content
+  // stays mounted (and therefore keeps its state) but is hidden, so nothing is
+  // unmounted, no effect re-runs, and no data is discarded.
+  if (panelMode && desktopCollapsible && isCollapsed) {
+    return (
+      <div className={cn("pointer-events-none absolute bottom-0 z-20 lg:pointer-events-auto", desktopClassName, className)}>
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          aria-expanded={false}
+          aria-label={desktopExpandLabel}
+          className={cn(
+            "pointer-events-auto m-4 flex items-center gap-2 rounded-full border border-border/70 bg-sidebar/85 px-4 py-2.5",
+            "text-[12px] font-semibold text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.30)] backdrop-blur-md",
+            "transition-colors hover:bg-sidebar",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+            "motion-safe:active:scale-[0.98]",
+          )}
+        >
+          <MapPinned className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+          {desktopExpandLabel}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -78,11 +131,42 @@ export default function MobileSheet({
       <div
         className={cn(
           "pointer-events-auto flex flex-col overflow-hidden rounded-t-3xl border-x border-t border-border bg-card shadow-[0_-8px_32px_rgba(0,0,0,0.45)]",
+          // A collapsible desktop panel supplies its own card chrome (surface,
+          // border, radius, height cap) via desktopClassName, so only a
+          // non-collapsible desktop panel is flattened into a bare column.
           desktopClassName &&
+            !desktopCollapsible &&
             "lg:max-h-none lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none",
+          // The collapsible card is bounded so it can never grow into the map.
+          desktopCollapsible &&
+            "lg:max-h-[calc(100%-3rem)] lg:rounded-2xl lg:border lg:border-border/70 lg:bg-background/95 lg:shadow-[0_18px_50px_rgba(0,0,0,0.42)] lg:backdrop-blur-md",
         )}
         style={panelMode ? undefined : { maxHeight: `${expandedVh}svh` }}
       >
+        {/* Desktop collapse control, when the caller opted in. Sits at the top of
+            the floating panel, mirroring the mobile chevron below. */}
+        {panelMode && desktopCollapsible && (
+          <div className="hidden shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2 lg:flex">
+            <span className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+              {desktopTitle ?? ""}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCollapsed(true)}
+              aria-expanded={true}
+              aria-label={desktopCollapseLabel}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-semibold text-muted-foreground",
+                "transition-colors hover:bg-white/5 hover:text-foreground",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+              )}
+            >
+              <ChevronUp className="h-4 w-4 rotate-180" aria-hidden="true" />
+              Collapse
+            </button>
+          </div>
+        )}
+
         {/* The one and only control. Fixed hit area, so it is always reachable
             and always does exactly one thing. */}
         <button
@@ -155,7 +239,7 @@ export default function MobileSheet({
           )}
           style={panelMode || expanded ? undefined : { maxHeight: peekHeight }}
         >
-          {typeof children === "function" ? children({ expanded }) : children}
+          {typeof children === "function" ? children({ expanded, panelMode }) : children}
         </div>
       </div>
     </div>
