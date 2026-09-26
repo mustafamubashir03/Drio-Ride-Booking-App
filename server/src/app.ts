@@ -5,7 +5,7 @@ import v1Router from './routers/v1/index.router';
 import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
 import { oauthDiagMiddleware } from './middlewares/oauth-diag.middleware';
-import { oauthCallbackRedirectFallbackMiddleware } from './middlewares/oauth-callback-fallback.middleware';
+import { authRedirectFallbackMiddleware } from './middlewares/auth-redirect-fallback.middleware';
 import { attachCorrelationIdMiddleware } from './middlewares/correlation.middleware';
 import { logForwardedClientIpMiddleware } from './middlewares/client-ip.middleware';
 import placesRouter from './routers/v1/places.router';
@@ -66,13 +66,14 @@ const resolveAuthNodeHandler = async (): Promise<AuthNodeHandler> => {
 // Better Auth behaviour. Remove together with oauth-diag.middleware.ts.
 app.use(oauthDiagMiddleware);
 
-// TEMPORARY: Render's static-site edge rewrites the callback's 302 to a
-// bodyless 200 on top-level navigations, which leaves the browser on a blank
+// TEMPORARY: Render's static-site edge rewrites a browser-facing auth redirect
+// to a bodyless 200 on top-level navigations, which leaves the user on a blank
 // page. This carries the same redirect in the body so the navigation still
-// lands on the target, with Better Auth's Set-Cookie headers untouched.
-// Mounted before the auth handler and scoped by the middleware to GET
-// /api/auth/callback/* only. Remove together with its own file.
-app.use(oauthCallbackRedirectFallbackMiddleware);
+// lands on its target, with Better Auth's Set-Cookie headers untouched.
+// Mounted before the auth handler and scoped by the middleware to
+// GET /api/auth/callback/* and GET /api/auth/verify-email only.
+// Remove together with auth-redirect-fallback.middleware.ts and redirect-document.ts.
+app.use(authRedirectFallbackMiddleware);
 
 app.all("/api/auth/{*splat}", (req, res, next) => {
     resolveAuthNodeHandler()
