@@ -90,58 +90,60 @@ export default function DriverProfile() {
           </div>
         )}
 
-        {/* Profile card */}
-        <div className="rounded-3xl border border-border bg-card overflow-hidden">
-          <div className="h-24 bg-gradient-to-br from-primary/20 via-primary/10 to-transparent relative">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-card/60 to-transparent" />
-          </div>
-          <div className="px-7 pb-7">
-            {/* items-center + flex-wrap aligns the avatar, the name block and
-                the role badge on one shared centre line. The previous
-                items-end with -mt-8 plus ad-hoc pb-1 offsets left the avatar
-                sitting low and the badge off the text baseline. */}
-            <div className="-mb-6 -mt-8 flex flex-wrap items-center gap-4 sm:gap-5">
-              <Avatar size="lg" className="h-16 w-16 shrink-0 ring-4 ring-card">
-                {user?.image ? <AvatarImage src={user.image} alt="" /> : null}
-                <AvatarFallback className="bg-primary/20 text-2xl font-bold text-primary">
-                  {Initials(user?.name, user?.email)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[16px] font-semibold text-foreground sm:text-[18px]">
-                  {user?.name ?? "Drio Driver"}
-                </p>
-                <p className="truncate text-[12px] text-muted-foreground sm:text-[13px]">{user?.email}</p>
-                <p className="mt-1 flex items-center gap-1 text-[11.5px] text-muted-foreground">
-                  {!ratingPending && !ratingFailed && rating?.average != null && rating.count > 0 ? (
-                    <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" aria-hidden />
-                  ) : (
-                    <Star className="h-3.5 w-3.5 text-muted-foreground/60" aria-hidden />
-                  )}
-                  {ratingPending ? (
-                    "Loading rating…"
-                  ) : ratingFailed ? (
-                    "Rating unavailable"
-                  ) : rating?.average != null && rating.count > 0 ? (
-                    <>
-                      <span className="font-semibold text-foreground tabular-nums">
-                        {rating.average.toFixed(1)}
-                      </span>
-                      <span className="tabular-nums">
-                        · {rating.count} {rating.count === 1 ? "rating" : "ratings"}
-                      </span>
-                    </>
-                  ) : (
-                    "No ratings yet"
-                  )}
-                </p>
-              </div>
-              <div className="shrink-0">
-                <span className="rounded-full border border-primary/20 bg-primary/12 px-2.5 py-1.5 text-[10px] font-semibold text-primary sm:px-3.5 sm:text-[11px]">
-                  Driver
-                </span>
-              </div>
+        {/* Profile card.
+
+            Laid out as a centred column rather than a decorative band with the
+            avatar pulled up over it by a negative margin. That version had three
+            coupled problems: -mb-6 (-24px) against pb-7 (28px) left only 4px of
+            space under the row, so the content sat on the card's bottom edge; the
+            -mt-8 (-32px) overlap only lined up because the 96px band and the 64px
+            avatar happened to match it, so any change to either broke it; and
+            px-7 was a fixed 28px at every width while the page gutter is p-4.
+
+            Now the avatar, name, email, rating and role badge are one centred
+            stack with an even responsive rhythm, so the content is genuinely
+            centred on the Y axis at any width and nothing depends on a magic
+            number staying in sync. */}
+        <div className="rounded-3xl border border-border bg-card px-5 py-6 sm:px-7 sm:py-7">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <Avatar className="h-16 w-16 shrink-0 ring-4 ring-card sm:h-20 sm:w-20">
+              {user?.image ? <AvatarImage src={user.image} alt="" /> : null}
+              <AvatarFallback className="bg-primary/20 text-2xl font-bold text-primary">
+                {Initials(user?.name, user?.email)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex w-full min-w-0 flex-col items-center gap-1">
+              <p className="max-w-full truncate text-[17px] font-semibold text-foreground sm:text-[19px]">
+                {user?.name ?? "Drio Driver"}
+              </p>
+              <p className="max-w-full truncate text-[12.5px] text-muted-foreground sm:text-[13px]">{user?.email}</p>
+              <p className="mt-0.5 flex items-center gap-1 text-[11.5px] text-muted-foreground">
+                {!ratingPending && !ratingFailed && rating?.average != null && rating.count > 0 ? (
+                  <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" aria-hidden />
+                ) : (
+                  <Star className="h-3.5 w-3.5 text-muted-foreground/60" aria-hidden />
+                )}
+                {ratingPending ? (
+                  "Loading rating…"
+                ) : ratingFailed ? (
+                  "Rating unavailable"
+                ) : rating?.average != null && rating.count > 0 ? (
+                  <>
+                    <span className="font-semibold text-foreground tabular-nums">
+                      {rating.average.toFixed(1)}
+                    </span>
+                    <span className="tabular-nums">
+                      · {rating.count} {rating.count === 1 ? "rating" : "ratings"}
+                    </span>
+                  </>
+                ) : (
+                  "No ratings yet"
+                )}
+              </p>
             </div>
+            <span className="shrink-0 rounded-full border border-primary/20 bg-primary/12 px-3 py-1.5 text-[10px] font-semibold text-primary sm:px-3.5 sm:text-[11px]">
+              Driver
+            </span>
           </div>
         </div>
 
