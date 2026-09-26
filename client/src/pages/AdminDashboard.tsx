@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
@@ -13,14 +13,15 @@ import { AnimatePresence, motion } from "motion/react";
 import { motionStateProps, useMotionSystem } from "@/motion/use-motion";
 import {
   DRIVER_DOCUMENT_LABELS,
-  getDriverApplicationAdminApi,
-  getDriverApplicationsOverview,
-  listDriverApplicationsAdminApi,
-  reviewDriverApplicationAdminApi,
   type AdminDriverApplication,
   type DriverApplicationStatus,
-  type DriverApplicationsOverview,
 } from "@/lib/driver-api";
+import {
+  useDriverApplicationDetailQuery,
+  useDriverApplicationsListQuery,
+  useDriverApplicationsOverviewQuery,
+  useReviewDriverApplicationMutation,
+} from "@/hooks/queries/use-driver-applications-admin";
 import {
   Car,
   CheckCircle2,
@@ -194,16 +195,16 @@ function MetricCard({
 
 function ReviewDecisionCard({
   application,
-  onReviewed,
+
 }: {
   application: AdminDriverApplication;
-  onReviewed: (updated: AdminDriverApplication) => void;
+
 }) {
   const [decision, setDecision] = useState<"approved" | "rejected">("approved");
   const [adminNote, setAdminNote] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reviewMutation = useReviewDriverApplicationMutation();
 
   const handleSubmit = async () => {
     if (decision === "rejected" && !rejectionReason.trim()) {
@@ -211,22 +212,21 @@ function ReviewDecisionCard({
       return;
     }
     setError(null);
-    setSubmitting(true);
     try {
-      const updated = await reviewDriverApplicationAdminApi({
+      // The mutation refreshes the list, the counters and this application's
+      // detail, so the admin never has to reconcile copies by hand.
+      await reviewMutation.mutateAsync({
         applicationId: application._id,
         decision,
         adminNote: adminNote.trim() || null,
         rejectionReason:
           decision === "rejected" ? rejectionReason.trim() || null : null,
       });
-      onReviewed(updated);
+
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not submit your decision."
       );
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -337,10 +337,10 @@ function ReviewDecisionCard({
             type="button"
             variant={decision === "approved" ? "default" : "destructive"}
             className="flex-1 font-semibold hover:scale-[1.01] motion-reduce:scale-100 motion-reduce:transition-none"
-            disabled={submitting}
+            disabled={reviewMutation.isPending}
             onClick={handleSubmit}
           >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />}
+            {reviewMutation.isPending && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />}
             {decision === "approved"
               ? "Approve application"
               : "Reject application"}
@@ -358,128 +358,58 @@ export default function AdminDashboard() {
     user?: { name?: string; email?: string };
   })?.user;
 
-  const [overview, setOverview] = useState<DriverApplicationsOverview | null>(
-    null
-  );
-  const [overviewError, setOverviewError] = useState<string | null>(null);
+  // Admin driver-application data is stable server state: it changes when an
+  // admin acts, and the same overview counters back both the summary tiles and
+  // the per-filter tab labels. Three queries replace three hand-rolled loaders,
+  // and a review invalidates exactly the families it affects.
+  const {
+    data: overview,
+    error: overviewError,
+    refetch: refetchOverview,
+  } = useDriverApplicationsOverviewQuery();
 
   const [filter, setFilter] = useState<Filter>("all");
-  const [applications, setApplications] = useState<AdminDriverApplication[]>([]);
-  const [listLoading, setListLoading] = useState(true);
-  const [listError, setListError] = useState<string | null>(null);
-  const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const listRequestSeq = useRef(0);
-
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selected, setSelected] = useState<AdminDriverApplication | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  const [detailAttempt, setDetailAttempt] = useState(0);
 
-  const loadOverview = async () => {
-    try {
-      const data = await getDriverApplicationsOverview();
-      setOverview(data);
-      setOverviewError(null);
-    } catch (err) {
-      setOverviewError(
-        err instanceof Error ? err.message : "Could not load overview statistics."
-      );
-    }
+  const listParams = {
+    page: currentPage,
+    limit: 50,
+    status: filter === "all" ? undefined : filter,
   };
+  const {
+    data: listData,
+    refetch: refetchList,
+    isPending: listLoading,
+    error: listError,
+  } = useDriverApplicationsListQuery(listParams);
+  const applications = useMemo(() => listData?.applications ?? [], [listData]);
+  const totalCount = listData?.pagination.total ?? 0;
+  const totalPages = listData?.pagination.pages ?? 1;
 
-  const loadList = useCallback(async () => {
-    const request = ++listRequestSeq.current;
-    setListLoading(true);
-    setListError(null);
-    try {
-      const result = await listDriverApplicationsAdminApi({
-        page: currentPage,
-        limit: 50,
-        status: filter === "all" ? undefined : filter,
-      });
-      if (request !== listRequestSeq.current) return;
-      setApplications(result.applications);
-      setTotalCount(result.pagination.total);
-      setTotalPages(result.pagination.pages);
-    } catch (err) {
-      if (request !== listRequestSeq.current) return;
-      setListError(
-        err instanceof Error ? err.message : "Could not load driver applications."
-      );
-    } finally {
-      if (request === listRequestSeq.current) setListLoading(false);
-    }
-  }, [currentPage, filter]);
+  const {
+    data: selected,
+    isPending: detailLoading,
+    error: detailError,
+    refetch: refetchDetail,
+  } = useDriverApplicationDetailQuery(selectedId);
 
-  useEffect(() => {
-    void loadOverview();
-  }, []);
-
-  useEffect(() => {
-    void loadList();
-  }, [loadList]);
-
-  useEffect(() => {
-    if (!selectedId) {
-      setSelected(null);
-      setDetailError(null);
-      return;
-    }
-    let cancelled = false;
-    setDetailLoading(true);
-    setDetailError(null);
-    getDriverApplicationAdminApi(selectedId)
-      .then((application) => {
-        if (!cancelled) setSelected(application);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setSelected(null);
-          setDetailError(
-            err instanceof Error ? err.message : "Could not load this application."
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedId, detailAttempt]);
-
+  // Changing the filter or the page changes the list query key, so the new
+  // page loads on its own and the detail pane is cleared by dropping the id.
   const handleFilterChange = (next: Filter) => {
     if (next === filter) return;
     setFilter(next);
     setCurrentPage(1);
-    setTotalPages(1);
-    setApplications([]);
     setSelectedId(null);
-    setSelected(null);
   };
 
   const selectApplication = (applicationId: string) => {
     setSelectedId(applicationId);
-    setSelected(null);
-    setDetailError(null);
-    setDetailLoading(true);
   };
 
   const changePage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(totalPages, page)));
     setSelectedId(null);
-    setSelected(null);
-    setDetailError(null);
-    setDetailLoading(false);
-  };
-
-  const handleReviewed = (updated: AdminDriverApplication) => {
-    setSelected(updated);
-    void loadList();
-    void loadOverview();
   };
 
   const handleSignOut = async () => {
@@ -648,7 +578,7 @@ export default function AdminDashboard() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => void loadOverview()}
+                onClick={() => void refetchOverview()}
               >
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                 Refresh
@@ -699,7 +629,7 @@ export default function AdminDashboard() {
                 className="mt-3 flex items-start gap-1.5 text-[12px] font-medium text-destructive"
               >
                 <CircleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
-                {overviewError}
+                {(overviewError instanceof Error ? overviewError.message : null)}
               </p>
             )}
           </section>
@@ -787,7 +717,7 @@ export default function AdminDashboard() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => void loadList()}
+                        onClick={() => void refetchList()}
                       >
                         <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                         Try again
@@ -974,12 +904,12 @@ export default function AdminDashboard() {
                           Could not load this application
                         </p>
                         <p className="max-w-xs text-[12px] leading-relaxed break-words text-muted-foreground [overflow-wrap:anywhere]">
-                          {detailError}
+                          {(detailError instanceof Error ? detailError.message : null)}
                         </p>
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => setDetailAttempt((n) => n + 1)}
+                          onClick={() => void refetchDetail()}
                         >
                           <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                           Try again
@@ -1183,7 +1113,7 @@ export default function AdminDashboard() {
                   {selected.status === "pending" ? (
                     <ReviewDecisionCard
                       application={selected}
-                      onReviewed={handleReviewed}
+              
                     />
                   ) : (
                     <div className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/30 px-4 py-3">
