@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
 import Map from "@/components/Map";
+import MobileSheet from "@/components/MobileSheet";
+import LocationPermission, { type LocationUiState } from "@/components/LocationPermission";
 import PlaceSearchField from "@/components/PlaceSearchField";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -275,6 +277,18 @@ export default function Dashboard() {
   const [historyReviewBusy, setHistoryReviewBusy] = useState(false);
   const [historyReviewError, setHistoryReviewError] = useState<string | null>(null);
   const mobileSheetRef = useRef<HTMLDivElement>(null);
+  // Which location-permission outcome we are in, so the sheet can explain it
+  // instead of leaving the pickup field mysteriously empty. Seeded from
+  // navigator so the unsupported case never needs a state write inside an
+  // effect body.
+  const [locationUi, setLocationUi] = useState<LocationUiState>(() =>
+    typeof navigator !== "undefined" && !("geolocation" in navigator)
+      ? "unsupported"
+      : "prompt",
+  );
+  // Kept so the sheet's "Allow location" / "Try again" reuses the exact same
+  // geolocation call rather than introducing a second code path.
+  const requestLocationRef = useRef<(() => void) | null>(null);
   const historyScrollRef = useRef<HTMLDivElement>(null);
   const mobileFieldCleanupRef = useRef<(() => void) | null>(null);
   const fromLocationRef = useRef(fromLocation);
@@ -438,15 +452,22 @@ export default function Dashboard() {
   // pickup field is pre-filled without pressing any button. Browsers show the
   // geolocation prompt once; after the user allows it, location resolves
   // silently on every visit.
+  //
+  // The Geolocation calls themselves are unchanged; this only records which of
+  // the permission outcomes happened so the UI can explain it, and keeps a
+  // retry handle so the user is never re-prompted by us.
   useEffect(() => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      // Already seeded as "unsupported" by the state initialiser.
       return;
     }
     let cancelled = false;
     const resolve = () => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          if (cancelled || fromLocationRef.current) return;
+          if (cancelled) return;
+          setLocationUi("granted");
+          if (fromLocationRef.current) return;
           const { latitude, longitude } = position.coords;
           setFromLocation({
             id: "current-location",
@@ -456,13 +477,17 @@ export default function Dashboard() {
             longitude,
           });
         },
-        () => {
-          // permission denied / unavailable — the dropdown's manual
-          // "Use my current location" row remains as a fallback
+        (error) => {
+          if (cancelled) return;
+          // Permission denied / unavailable. The dropdown's manual
+          // "Use my current location" row and the retry in the sheet remain as
+          // fallbacks, so we never nag with a fresh prompt.
+          setLocationUi(error.code === 1 ? "denied" : "unavailable");
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
       );
     };
+    requestLocationRef.current = resolve;
     const permissions = (
       navigator as unknown as {
         permissions?: {
@@ -475,11 +500,18 @@ export default function Dashboard() {
         .query({ name: "geolocation" })
         .then((status) => {
           if (cancelled) return;
-          if (status.state === "denied") return;
+          if (status.state === "denied") {
+            setLocationUi("denied");
+            return;
+          }
+          setLocationUi("loading");
           resolve();
         })
         .catch(() => resolve());
     } else {
+      // No Permissions API, so the state is genuinely unknown: leave it at
+      // "prompt" (an explicit "Allow location" action) and let the geolocation
+      // callbacks below settle it.
       resolve();
     }
     return () => {
@@ -1728,7 +1760,7 @@ export default function Dashboard() {
       </aside>
 
       {/* ── Main area ─────────────────────────────────────────────── */}
-      <div className="relative flex min-h-0 flex-1 flex-col pb-[calc(3rem+max(0.75rem,env(safe-area-inset-bottom)))] lg:min-h-0 lg:ml-[220px] lg:pb-0">
+      <div className="relative flex min-h-0 flex-1 flex-col pb-[calc(4.25rem+max(0.75rem,env(safe-area-inset-bottom)))] lg:min-h-0 lg:ml-[220px] lg:pb-0">
         {/* Top bar (desktop) — only shown on non-map tabs */}
         {activeTab !== "home" && (
           <header className="hidden h-[64px] items-center justify-between border-b border-border px-8 shrink-0 lg:flex">
@@ -1748,9 +1780,7 @@ export default function Dashboard() {
         {activeTab !== "home" && (
           <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur max-lg:pl-[calc(1rem+env(safe-area-inset-left))] max-lg:pr-[calc(1rem+env(safe-area-inset-right))] [@media(max-height:600px)]:h-[calc(3rem+env(safe-area-inset-top))] lg:hidden">
             <div className="flex items-center gap-2.5 min-w-0">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
-                <Logo className="!text-[1rem]" />
-              </span>
+              <Logo className="!text-[1.15rem]" />
               <h1 className="truncate text-[14px] font-semibold text-foreground">
                 {activeTab === "history" && "Ride History"}
                 {activeTab === "account" && "My Account"}
@@ -1766,11 +1796,9 @@ export default function Dashboard() {
         )}
 
         {activeTab === "home" && (
-          <div className="group/booking-sheet relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row lg:overflow-hidden">
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row lg:overflow-hidden">
             <div className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background px-4 pt-[env(safe-area-inset-top)] max-lg:pl-[calc(1rem+env(safe-area-inset-left))] max-lg:pr-[calc(1rem+env(safe-area-inset-right))] [@media(max-height:600px)]:h-[calc(3rem+env(safe-area-inset-top))] lg:hidden">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
-                <Logo className="!text-[1rem]" />
-              </span>
+              <Logo className="!text-[1.15rem]" />
               <div className="flex items-center gap-1.5">
                 <AccountSwitcher compact placement="bottom">
                   <span />
@@ -1778,7 +1806,7 @@ export default function Dashboard() {
                  <RealtimeBadge connected={socketConnected} compact />
               </div>
             </div>
-            <div className="relative h-[clamp(8rem,50svh,28rem)] w-full shrink-0 overflow-hidden bg-drio-deep max-lg:group-has-[:is(input,textarea):focus]/booking-sheet:h-24 max-lg:[@media(max-height:600px)]:h-28 lg:relative lg:inset-auto lg:z-0 lg:h-auto lg:w-auto lg:flex-1 lg:order-2">
+            <div className="relative min-h-0 w-full flex-1 overflow-hidden bg-drio-deep lg:relative lg:inset-auto lg:z-0 lg:h-auto lg:w-auto lg:flex-1 lg:order-2">
               <Map
                 className="h-full w-full"
                 from={fromLocation}
@@ -1803,31 +1831,41 @@ export default function Dashboard() {
             <div className="absolute inset-x-[380px] bottom-0 z-10 hidden max-h-[55%] overflow-y-auto overscroll-contain lg:block">
               {renderRideStatusSurface("desktop")}
             </div>
-            <div
-              ref={mobileSheetRef}
-              className="relative z-20 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 lg:hidden"
-              onFocusCapture={(event) => {
-                const field = event.target;
-                if (field instanceof HTMLElement && field.matches("input, textarea")) {
-                  revealMobileField(field);
-                }
-              }}
+            {/* Mobile: real drag-to-expand sheet floating over the map, so the
+                map stays visible above it. Desktop keeps the fixed side panel. */}
+            <MobileSheet
+              contentRef={mobileSheetRef}
+              onFieldFocus={revealMobileField}
+              peekHeight={rideBooked || cancelOpen ? 260 : 210}
+              label={rideBooked ? "Expand or collapse ride details" : "Expand or collapse booking options"}
+              peekHint={
+                <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+                  {rideBooked ? "Your ride" : cancelOpen ? "Cancel your ride" : "Where to?"}
+                </p>
+              }
             >
-              <div className="w-full overflow-visible rounded-2xl border border-border bg-card shadow-2xl">
-                <div className="flex justify-center pt-3 pb-1">
-                  <div className="h-1 w-10 rounded-full bg-border" />
+              {cancelOpen || rideBooked ? (
+                <div className="overscroll-contain">
+                  {renderRideStatusSurface("mobile")}
                 </div>
-                {cancelOpen || rideBooked ? (
-                  <div className="overscroll-contain">
-                    {renderRideStatusSurface("mobile")}
-                  </div>
-                ) : (
-                  <div className="overscroll-contain px-4 pb-4 pt-2">
-                    {renderBookingSurface("mobile")}
-                  </div>
-                )}
-              </div>
-            </div>
+              ) : (
+                <div className="overscroll-contain pb-2 pt-1">
+                  {/* Only surfaced while it is actionable: once a pickup exists
+                      or location resolved, it would just be noise. */}
+                  {locationUi !== "granted" && !fromLocation && (
+                    <LocationPermission
+                      className="mb-3"
+                      state={locationUi}
+                      onRequest={() => {
+                        setLocationUi("loading");
+                        requestLocationRef.current?.();
+                      }}
+                    />
+                  )}
+                  {renderBookingSurface("mobile")}
+                </div>
+              )}
+            </MobileSheet>
           </div>
         )}
 

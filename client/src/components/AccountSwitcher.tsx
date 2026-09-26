@@ -68,10 +68,17 @@ export function AccountSwitcher({
   children,
   placement = "top",
   compact = false,
+  live = false,
 }: {
   children?: ReactNode;
   placement?: "top" | "bottom";
   compact?: boolean;
+  /**
+   * Marks the current context as live (driver online / socket connected).
+   * Callers pass this because they already own the authoritative value; this
+   * component deliberately starts no socket or availability subscription.
+   */
+  live?: boolean;
 }) {
   const navigate = useNavigate();
   const { data: session, isPending } = authClient.useSession();
@@ -146,19 +153,42 @@ export function AccountSwitcher({
   }, [isOpen]);
 
   const sessionUser = (session as unknown as {
-    user?: { role?: string };
+    user?: { role?: string; name?: string; email?: string; image?: string | null };
   } | null)?.user;
   const isAdmin = sessionUser?.role === "admin";
 
+  // Real session data only: no placeholder identity is ever rendered.
+  const displayName = sessionUser?.name?.trim() || sessionUser?.email || "Account";
+  const contextLabel = isAdmin
+    ? "Admin"
+    : driverCapability?.status === "approved"
+      ? "Driver"
+      : driverCapability?.status === "pending"
+        ? "Driver · Pending"
+        : driverCapability?.status === "rejected"
+          ? "Driver · Rejected"
+          : "Passenger";
+  const initials = (
+    sessionUser?.name?.trim() ||
+    sessionUser?.email ||
+    "?"
+  )
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+
   if (isPending || checking) {
     return compact ? (
-      <Button variant="ghost" size="sm" className="h-11 w-11 p-0" disabled aria-label="Switch account">
-        <UserIcon className="h-4 w-4" />
-        <span className="sr-only">Switch account</span>
-      </Button>
+      <div
+        className="h-11 w-11 animate-pulse rounded-full bg-muted"
+        aria-label="Loading account"
+        aria-busy="true"
+      />
     ) : (
       <>{children}</>
-    )
+    );
   }
 
   // Build available contexts
@@ -197,19 +227,62 @@ export function AccountSwitcher({
 
   return (
     <div className="relative w-fit" ref={dropdownRef}>
-      <Button
-        variant="ghost"
-        size="sm"
-        className={compact ? "h-11 w-11 p-0" : "gap-1 h-8"}
-        aria-label={compact ? "Switch account" : undefined}
+      <button
+        type="button"
+        aria-label={`Switch context. Signed in as ${displayName}, ${contextLabel}`}
         aria-expanded={isOpen}
         aria-haspopup="menu"
         onClick={() => setIsOpen(!isOpen)}
+        className={
+          compact
+            ? "flex h-11 items-center gap-2 rounded-full border border-border/70 bg-card/70 py-1 pl-1 pr-2.5 text-left transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 motion-safe:active:scale-[0.98]"
+            : "flex h-8 items-center gap-1.5 rounded-lg px-1.5 text-left transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+        }
       >
-        <UserIcon className="h-4 w-4" />
-        {compact ? null : <span className="text-[13px] font-medium">Switch account</span>}
-        {compact ? null : <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} />}
-      </Button>
+        <span className="relative shrink-0">
+          {sessionUser?.image ? (
+            <img
+              src={sessionUser.image}
+              alt=""
+              className={compact ? "h-9 w-9 rounded-full object-cover" : "h-6 w-6 rounded-full object-cover"}
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <span
+              aria-hidden="true"
+              className={`flex items-center justify-center rounded-full bg-primary/20 font-bold text-primary ${
+                compact ? "h-9 w-9 text-[12px]" : "h-6 w-6 text-[10px]"
+              }`}
+            >
+              {initials}
+            </span>
+          )}
+          {/* Subtle live marker, anchored to the avatar corner. */}
+          {live && (
+            <span
+              className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 border-card bg-drio-success"
+              title="Live"
+            />
+          )}
+        </span>
+
+        {compact ? (
+          <span className="flex min-w-0 flex-col leading-none">
+            <span className="max-w-[5.5rem] truncate text-[12px] font-semibold text-foreground">
+              {displayName}
+            </span>
+            <span className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+              {live && <span className="h-1.5 w-1.5 rounded-full bg-drio-success" aria-hidden="true" />}
+              <span className="truncate">{contextLabel}</span>
+            </span>
+          </span>
+        ) : (
+          <>
+            <span className="text-[13px] font-medium">{displayName}</span>
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+          </>
+        )}
+      </button>
 
       <AnimatePresence>
         {isOpen && (

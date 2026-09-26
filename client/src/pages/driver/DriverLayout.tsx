@@ -337,20 +337,18 @@ export default function DriverLayout() {
         {/* Mobile header */}
         <header className="relative z-[60] flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border bg-card shadow-sm">
-              <Logo className="!text-[1rem]" />
-            </span>
+            <Logo className="!text-[1.15rem]" />
             <h1 className="truncate text-[14px] font-semibold text-foreground">
               {pageTitleFor(location.pathname)}
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <AccountSwitcher compact placement="bottom">
+            {/* `connected` is the driver's existing realtime signal; the
+                switcher renders it as a subtle live dot plus context label, so
+                the old solid "● Driver" badge is no longer needed. */}
+            <AccountSwitcher compact placement="bottom" live={connected}>
               <span />
             </AccountSwitcher>
-            <span className="rounded-full bg-drio-success/15 px-2.5 py-1 text-[10px] font-semibold text-drio-success">
-              ● Driver
-            </span>
           </div>
         </header>
 

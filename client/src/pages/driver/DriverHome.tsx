@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import Map from "@/components/Map";
+import MobileSheet from "@/components/MobileSheet";
+import LocationPermission from "@/components/LocationPermission";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -35,9 +37,8 @@ import {
 } from "@/lib/format";
 import {
   CircleDotDashed,
-  Crosshair,
-  LocateFixed,
-  MapPin,
+LocateFixed,
+MapPin,
   Navigation,
   Power,
   Radio,
@@ -324,7 +325,7 @@ useEffect(() => {
 
   return (
     <MotionPage className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row lg:overflow-hidden">
-      <div className="relative h-[clamp(8rem,50svh,28rem)] w-full shrink-0 overflow-hidden bg-drio-deep lg:relative lg:inset-auto lg:z-0 lg:h-auto lg:w-auto lg:flex-1 lg:order-2">
+      <div className="relative min-h-0 w-full flex-1 overflow-hidden bg-drio-deep lg:relative lg:inset-auto lg:z-0 lg:h-auto lg:w-auto lg:flex-1 lg:order-2">
         <Map
           className="h-full w-full"
           from={from}
@@ -337,12 +338,19 @@ useEffect(() => {
         />
       </div>
 
-      <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col lg:static lg:z-auto lg:flex lg:min-h-0 lg:w-[380px] lg:flex-none lg:flex-col lg:order-1 lg:border-r lg:shadow-none">
-        <div className="flex justify-center pt-3 pb-1 lg:hidden">
-          <div className="h-1 w-10 rounded-full bg-border" />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-t-3xl border-t border-x border-border bg-background shadow-2xl lg:min-h-0 lg:max-h-none lg:flex-1 lg:overflow-y-auto lg:rounded-none lg:border-0 lg:shadow-none">
-          <div className="p-4 lg:p-6">
+      {/* Mobile: drag-to-expand sheet over the map. At lg the same DOM becomes
+          the fixed side panel, so the driver content is never rendered twice. */}
+      <MobileSheet
+        peekHeight={240}
+        label="Expand or collapse driver panel"
+        desktopClassName="lg:pointer-events-auto lg:static lg:inset-auto lg:z-10 lg:order-1 lg:flex lg:w-[380px] lg:flex-none lg:flex-col lg:border-r lg:border-border lg:bg-background"
+        contentClassName="p-4 lg:p-6"
+        peekHint={
+          <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+            {online ? "You are online" : "You are offline"}
+          </p>
+        }
+      >
           <AnimatePresence mode="wait">
             {availabilityLoading || activeLoading ? (
               <motion.div
@@ -451,21 +459,22 @@ useEffect(() => {
                     </p>
                   </div>
                 </div>
-                {!isTracking &&
-                  (location.error ? (
-                    <p className="mt-2 rounded-lg bg-destructive/8 px-2.5 py-1.5 text-[12px] text-destructive">{location.error}</p>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3 w-full hover:scale-[1.01] motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
-                      onClick={location.start}
-                      disabled={location.permission === "unsupported"}
-                    >
-                      <Crosshair className="h-3.5 w-3.5" />
-                      Start sharing location
-                    </Button>
-                  ))}
+                {/* Explains the permission state instead of showing a bare
+                    error string. Calls the existing location.start handler, so
+                    the Geolocation API behaviour is unchanged. */}
+                {!isTracking && (
+                  <LocationPermission
+                    className="mt-3"
+                    state={
+                      location.permission === "granted"
+                        ? "loading"
+                        : location.permission === "prompt"
+                          ? "prompt"
+                          : location.permission
+                    }
+                    onRequest={location.start}
+                  />
+                )}
               </div>
 
               <div className="rounded-2xl border border-border bg-card p-4 transition-colors duration-200">
@@ -707,9 +716,7 @@ useEffect(() => {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-        </div>{/* scroll wrapper */}
-      </div>{/* panel */}
+      </MobileSheet>
 
     </MotionPage>
   );

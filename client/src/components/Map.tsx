@@ -535,6 +535,15 @@ export default function Map({
   const searchCtxRef = useRef<SearchCtx | null>(null)
   const searchReducedRef = useRef(prefersReducedMotion())
   const navFittedPhaseRef = useRef<string | null>(null)
+  // Set once the camera has been handed to the driver on arrival, so the
+  // opening focus happens exactly one time per map instance and never fights
+  // the route/nav fitting effects afterwards.
+  const driverArrivalFocusedRef = useRef(false)
+  const navPhaseIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    navPhaseIdRef.current = navPhaseId
+  }, [navPhaseId])
 
   const showGeoStatus = (message: string) => {
     setGeoStatus(message)
@@ -974,6 +983,22 @@ export default function Map({
         duration: 500,
         essential: true,
       })
+    } else if (firstFix && !driverArrivalFocusedRef.current) {
+      // Arrival focus: the driver has just entered with their first usable fix
+      // and nothing is navigating yet, so bring the map to them instead of
+      // leaving it on the static default centre. Yields to an active nav leg
+      // or a driver search, both of which own the camera themselves.
+      const cameraOwnedElsewhere =
+        Boolean(navPhaseIdRef.current) || searchingRef.current || fromRef.current !== null
+      if (!cameraOwnedElsewhere) {
+        driverArrivalFocusedRef.current = true
+        map.easeTo({
+          center: [next.lng, next.lat],
+          zoom: Math.max(map.getZoom(), 14),
+          duration: 900,
+          essential: true,
+        })
+      }
     }
     // latest fixes supersede any stale animation target already in flight
     // eslint-disable-next-line react-hooks/exhaustive-deps
