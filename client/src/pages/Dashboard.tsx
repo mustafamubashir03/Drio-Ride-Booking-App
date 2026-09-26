@@ -2183,7 +2183,10 @@ export default function Dashboard() {
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-card/60 to-transparent" />
                 </div>
                 <div className="px-4 pb-5 sm:px-7 sm:pb-6">
-                  <div className="flex items-end gap-3 -mt-7 mb-4">
+                  {/* Mobile only: on desktop the fixed sidebar already renders
+                      the avatar/name/email row for this account, so showing it
+                      here as well duplicated the profile. */}
+                  <div className="flex items-end gap-3 -mt-7 mb-4 lg:hidden">
                     <Avatar size="lg" className="ring-4 ring-card h-14 w-14 sm:h-16 sm:w-16">
                       {user?.image ? (
                         <AvatarImage src={user.image} alt="" />

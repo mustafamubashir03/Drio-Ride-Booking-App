@@ -31,16 +31,26 @@ export type BottomTabItem = {
 };
 
 /**
- * The active tab is marked by a single 2px solid accent line sitting on the top
- * edge of that tab, with rounded ends. A line rather than an outlined box, so
- * it reads as the tab's leading edge instead of a panel drawn around it.
+ * The active tab is marked by an outlined shape with rounded top corners that
+ * rises out of the bar, drawn with the Drio accent gradient.
+ *
+ * The border is a gradient layer masked into a 1.5px outline with a second
+ * inner mask punching out the middle, so the bar's own background shows through
+ * and the shape reads as connected to the navigation area rather than as a
+ * filled pill sitting on top of it. The same treatment is used for every tab, so
+ * no per-tab colour variation is possible.
  */
-function ActiveTabLine({ reduced }: { reduced: boolean }) {
+function ActiveTabOutline({ reduced }: { reduced: boolean }) {
   return (
     <motion.span
-      layoutId="bottom-tabs-active-line"
+      layoutId="bottom-tabs-active-outline"
       aria-hidden="true"
-      className="absolute inset-x-[26%] top-0 h-[2px] rounded-full bg-primary"
+      className={cn(
+        "pointer-events-none absolute inset-x-[7%] top-0 h-[calc(100%-0.55rem)]",
+        "rounded-t-[0.85rem] bg-gradient-to-t from-primary/75 via-primary to-primary/75",
+        "p-px [mask-image:linear-gradient(#000,#000),linear-gradient(#000,#000)]",
+        "[mask-clip:content-box,border-box] [mask-composite:exclude]",
+      )}
       transition={{ duration: reduced ? 0 : 0.22, ease: [0.32, 0.72, 0, 1] }}
     />
   );
@@ -65,7 +75,7 @@ export default function BottomTabs({
 
   const inner = (isActive: boolean, item: BottomTabItem) => (
     <>
-      {isActive && <ActiveTabLine reduced={reduced} />}
+      {isActive && <ActiveTabOutline reduced={reduced} />}
       <span className="relative z-10 flex items-center justify-center">
         <item.icon
           strokeWidth={isActive ? 2.2 : 1.9}
