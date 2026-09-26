@@ -10,7 +10,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRoute } from "@/hooks/use-route";
 import { useNavigationRoute, type NavigationPhase } from "@/hooks/use-navigation-route";
 import { usePassengerSocket, type DriverLocationData, type PassengerSearchProgress, type RideStatusUpdateData } from "@/hooks/use-passenger-socket";
-import { fetchBookings, cancelBooking, submitBookingReview, type BookingCancelledBy, type BookingDriverInfo, type BookingDriverLocation, type BookingRecord, type BookingStatus, type DriverRatingSummary } from "@/lib/bookings-api";
+import { useQueryClient } from "@tanstack/react-query";
+import { type BookingCancelledBy, type BookingDriverInfo, type BookingDriverLocation, type BookingRecord, type BookingStatus, type DriverRatingSummary } from "@/lib/bookings-api";
+import { useBookingsQuery, useCancelBookingMutation, useSubmitBookingReviewMutation } from "@/hooks/queries/use-bookings";
+import { queryKeys } from "@/lib/query-keys";
 import { formatFare } from "@/lib/format";
 import { apiFetch } from "@/lib/runtime-config";
 import type { PlaceResult, SelectedLocation, RouteResult } from "@/lib/places-api";
@@ -34,6 +37,10 @@ import { MotionPage } from "@/motion/MotionPage";
 import { AnimatePresence, motion } from "motion/react";
 import { motionStateProps, useMotionSystem } from "@/motion/use-motion";
 import BottomNav from "@/components/BottomNav";
+
+// Stable empty fallback so the derived history groups keep the same reference
+// across renders while the query is still loading.
+const EMPTY_BOOKINGS: BookingRecord[] = [];
 
 const navItems = [
   { icon: Home, label: "Home", id: "home", accent: "primary" },
@@ -254,27 +261,19 @@ export default function Dashboard() {
   const [bookingCancelledBy, setBookingCancelledBy] =
     useState<BookingCancelledBy>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState<string>("other");
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewComment, setReviewComment] = useState("");
-  const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewDismissed, setReviewDismissed] = useState(false);
   const [bookingFeedback, setBookingFeedback] =
     useState<BookingRecord["feedback"]>({ rating: null, comment: null, reviewedAt: null });
-  const [history, setHistory] = useState<BookingRecord[]>([]);
-  const [historyStatus, setHistoryStatus] = useState<
-    "idle" | "loading" | "success" | "error"
-  >("idle");
-  const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyReviewId, setHistoryReviewId] = useState<string | null>(null);
   const [historyReviewRating, setHistoryReviewRating] = useState(0);
   const [historyReviewComment, setHistoryReviewComment] = useState("");
   const [historyReviewBusy, setHistoryReviewBusy] = useState(false);
   const [historyReviewError, setHistoryReviewError] = useState<string | null>(null);
-  const historyRequestSeq = useRef(0);
   const mobileSheetRef = useRef<HTMLDivElement>(null);
   const historyScrollRef = useRef<HTMLDivElement>(null);
   const mobileFieldCleanupRef = useRef<(() => void) | null>(null);
@@ -407,6 +406,12 @@ export default function Dashboard() {
       } else if (next && next !== "pending") {
         setSearchProgress(null);
       }
+      // A status transition changes persisted booking data, so the cached list
+      // is refetched. This is scoped to this ride's status events only: driver
+      // location packets are realtime and must never invalidate the cache.
+      if (next) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
+      }
     },
     onDriverLocation: (data: DriverLocationData) => {
       if (!bookingId || data.rideId !== bookingId) return;
@@ -416,6 +421,8 @@ export default function Dashboard() {
         heading: data.heading ?? null,
         speed: data.speed ?? null,
       });
+      // Intentionally no cache invalidation here: location is realtime state
+      // owned by the socket, not server state React Query should refetch for.
     },
   });
   const { connect: connectPassengerSocket } = passengerSocket;
@@ -480,40 +487,43 @@ export default function Dashboard() {
     };
   }, []);
 
-  const loadHistory = async (showLoading = true) => {
-    const seq = ++historyRequestSeq.current;
-    if (showLoading) {
-      setHistoryStatus("loading");
-      setHistoryError(null);
-    }
-    try {
-      const list = await fetchBookings();
-      if (seq !== historyRequestSeq.current) return;
-      setHistory(list);
-      setHistoryReviewId((current) =>
-        current && list.some((booking) =>
-          booking._id === current &&
-          booking.status === "completed" &&
-          booking.driver &&
-          !booking.feedback?.reviewedAt
-        )
-          ? current
-          : null,
-      );
-      setHistoryStatus("success");
-    } catch (e) {
-      if (seq !== historyRequestSeq.current || !showLoading) return;
-      setHistoryStatus("error");
-      setHistoryError(
-        e instanceof Error ? e.message : "Could not load your bookings.",
-      );
-    }
-  };
+  // The passenger's booking list is the one piece of stable server state on
+  // this screen: it is revisited via the History tab, restored on mount to
+  // re-attach an in-flight ride, and re-read by the active-ride poll below.
+  // One query now serves all three instead of three separate requests, and the
+  // cache stays authoritative through targeted invalidation on cancel, review,
+  // booking creation and ride status socket events.
+  const queryClient = useQueryClient();
+  const {
+    data: bookingsData,
+    isError: historyFailed,
+    isSuccess: historyLoaded,
+    error: historyError,
+    refetch: refetchBookings,
+  } = useBookingsQuery();
+  const history = bookingsData ?? EMPTY_BOOKINGS;
+  const cancelBookingMutation = useCancelBookingMutation();
+  const reviewBookingMutation = useSubmitBookingReviewMutation();
+
+  // Derived rather than synchronised through an effect: if the expanded row's
+  // ride is no longer reviewable (cancelled, or reviewed elsewhere) the row is
+  // simply treated as closed, with no extra render pass.
+  const openReviewId =
+    historyReviewId &&
+    bookingsData?.some(
+      (booking) =>
+        booking._id === historyReviewId &&
+        booking.status === "completed" &&
+        booking.driver &&
+        !booking.feedback?.reviewedAt,
+    )
+      ? historyReviewId
+      : null;
 
   const handleTabClick = (id: Tab) => {
     setActiveTab(id);
     if (id === "history") {
-      void loadHistory();
+      void refetchBookings();
     }
   };
 
@@ -622,15 +632,16 @@ export default function Dashboard() {
       setSearchProgress(null);
       setBookingFeedback({ rating: null, comment: null, reviewedAt: null });
       setCancelOpen(false);
-      setCancelBusy(false);
       setCancelError(null);
       setReviewRating(0);
       setReviewComment("");
-      setReviewBusy(false);
       setReviewError(null);
       setReviewDismissed(false);
       setRideBooked(true);
       setBookingState("idle");
+      // A new ride belongs in the cached list, so refresh it once here instead
+      // of leaving the History tab showing a stale set.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.bookings.all });
     } catch (e) {
       setBookingState("error");
       setBookingError(
@@ -640,11 +651,13 @@ export default function Dashboard() {
   };
 
   const handleCancelRide = async () => {
-    if (!bookingId || cancelBusy) return;
-    setCancelBusy(true);
+    if (!bookingId || cancelBookingMutation.isPending) return;
     setCancelError(null);
     try {
-      const result = await cancelBooking(bookingId, cancelReason);
+      const result = await cancelBookingMutation.mutateAsync({
+        bookingId,
+        reason: cancelReason,
+      });
       setBookingStatus(result.status);
       setBookingFare(result.fare ?? bookingFare);
       setBookingCancelledAt(result.cancelledAt);
@@ -665,17 +678,18 @@ export default function Dashboard() {
           (e instanceof Error ? e.message : "Could not cancel this ride."),
         );
       }
-    } finally {
-      setCancelBusy(false);
     }
   };
 
   const handleSubmitReview = async () => {
-    if (!bookingId || reviewBusy || reviewRating < 1) return;
-    setReviewBusy(true);
+    if (!bookingId || reviewBookingMutation.isPending || reviewRating < 1) return;
     setReviewError(null);
     try {
-      const result = await submitBookingReview(bookingId, reviewRating, reviewComment.trim() || undefined);
+      const result = await reviewBookingMutation.mutateAsync({
+        bookingId,
+        rating: reviewRating,
+        comment: reviewComment.trim() || undefined,
+      });
       setBookingFeedback(result.feedback);
       setReviewRating(0);
       setReviewComment("");
@@ -683,14 +697,12 @@ export default function Dashboard() {
       setReviewError(
         e instanceof Error ? e.message : "Could not submit your review.",
       );
-    } finally {
-      setReviewBusy(false);
     }
   };
 
   const openHistoryReview = (booking: BookingRecord) => {
     if (
-      historyReviewId !== null ||
+      openReviewId !== null ||
       historyReviewBusy ||
       booking.status !== "completed" ||
       !booking.driver ||
@@ -715,44 +727,17 @@ export default function Dashboard() {
     setHistoryReviewBusy(true);
     setHistoryReviewError(null);
     try {
-      const result = await submitBookingReview(
-        booking._id,
-        historyReviewRating,
-        historyReviewComment.trim() || undefined,
-      );
-      const submittedRating = result.feedback.rating;
-      const nextDriverRating: DriverRatingSummary | null =
-        !result.alreadyReviewed && submittedRating != null
-          ? {
-              average:
-                booking.driverRating?.average != null
-                  ? (booking.driverRating.average * booking.driverRating.count + submittedRating) /
-                    (booking.driverRating.count + 1)
-                  : submittedRating,
-              count: (booking.driverRating?.count ?? 0) + 1,
-            }
-          : booking.driverRating ?? null;
-      setHistory((current) =>
-        current.map((item) => {
-          const driverRating =
-            !result.alreadyReviewed &&
-            submittedRating != null &&
-            item.driver === booking.driver
-              ? nextDriverRating
-              : item.driverRating;
-          if (item._id === booking._id) {
-            return { ...item, feedback: result.feedback, driverRating };
-          }
-          if (driverRating !== item.driverRating) {
-            return { ...item, driverRating };
-          }
-          return item;
-        }),
-      );
+      // The mutation invalidates the bookings cache, so the feedback and the
+      // driver rating aggregate come back from the server. No local patching
+      // of the list is needed (and none should be reintroduced here).
+      await reviewBookingMutation.mutateAsync({
+        bookingId: booking._id,
+        rating: historyReviewRating,
+        comment: historyReviewComment.trim() || undefined,
+      });
       setHistoryReviewId(null);
       setHistoryReviewRating(0);
       setHistoryReviewComment("");
-      void loadHistory(false);
     } catch (e) {
       setHistoryReviewError(e instanceof Error ? e.message : "Could not submit your review.");
     } finally {
@@ -773,11 +758,9 @@ export default function Dashboard() {
     setBookingCancelledBy(null);
     setBookingFeedback({ rating: null, comment: null, reviewedAt: null });
     setCancelOpen(false);
-    setCancelBusy(false);
     setCancelError(null);
     setReviewRating(0);
     setReviewComment("");
-    setReviewBusy(false);
     setReviewError(null);
     setReviewDismissed(false);
     setRideBooked(false);
@@ -836,9 +819,12 @@ export default function Dashboard() {
       pollRunning = true;
       const seq = ++bookingPollSeq.current;
       try {
-        const list = await fetchBookings();
+        // Refetch the shared bookings query rather than issuing a private
+        // request: the History tab then benefits from this re-sync instead of
+        // holding a separate, staler copy of the same list.
+        const { data: list } = await refetchBookings();
         if (stopped || seq !== bookingPollSeq.current) return;
-        const current = list.find((b) => b._id === bookingId);
+        const current = list?.find((b) => b._id === bookingId);
         if (!current) return;
         setBookingStatus(current.status);
         setBookingFare(current.fare ?? null);
@@ -877,7 +863,7 @@ export default function Dashboard() {
     void poll();
 
     return stopPolling;
-  }, [rideBooked, bookingId]);
+  }, [rideBooked, bookingId, refetchBookings]);
 
   // Reload persistence: on mount, restore an in-flight booking (pending →
   // in_progress) so a page refresh does not strand the passenger. Terminal
@@ -886,19 +872,23 @@ export default function Dashboard() {
   const bootedFromHistory = useRef(false);
   useEffect(() => {
     if (!user?.id || bootedFromHistory.current || rideBooked) return;
+    // Reads the cached list the query already fetched on mount instead of
+    // issuing a second request for the same resource.
+    if (!bookingsData) return;
     bootedFromHistory.current = true;
-    let stopped = false;
-    const restore = async () => {
-      try {
-        const list = await fetchBookings();
-        if (stopped) return;
-        const inFlight = list.find((b) =>
-          b.status === "pending" ||
-          b.status === "confirmed" ||
-          b.status === "arriving" ||
-          b.status === "arrived" ||
-          b.status === "in_progress",
-        );
+    // Deferred to a microtask so the seed of the ride state happens after this
+    // effect returns, as it did when this restore issued its own request. The
+    // ride state is a set of interdependent values (status, driver, geometry)
+    // rather than a single derived value, so it is seeded once and then owned
+    // by the socket and the poll.
+    queueMicrotask(() => {
+      const inFlight = bookingsData.find((b) =>
+        b.status === "pending" ||
+        b.status === "confirmed" ||
+        b.status === "arriving" ||
+        b.status === "arrived" ||
+        b.status === "in_progress",
+      );
         if (!inFlight) return;
         setBookingId(inFlight._id);
         setBookingStatus(inFlight.status);
@@ -936,15 +926,8 @@ export default function Dashboard() {
           longitude: inFlight.destination.longitude,
         });
         setRideBooked(true);
-      } catch {
-        // transient — the bookmark will be skipped; user can retry naturally
-      }
-    };
-    void restore();
-    return () => {
-      stopped = true;
-    };
-  }, [user?.id, rideBooked]);
+    });
+  }, [user?.id, rideBooked, bookingsData]);
 
   const selectedVehicle = vehicleTypes.find((v) => v.id === vehicle)!;
   const estimatedFareLabel =
@@ -1529,17 +1512,17 @@ export default function Dashboard() {
                     id={`${pfx}submit-review-btn`}
                     size="sm"
                      className="min-h-11 font-semibold lg:min-h-8"
-                    disabled={reviewBusy || reviewRating < 1}
+                    disabled={reviewBookingMutation.isPending || reviewRating < 1}
                     onClick={() => void handleSubmitReview()}
                   >
-                    {reviewBusy ? "Submitting…" : "Submit review"}
+                    {reviewBookingMutation.isPending ? "Submitting…" : "Submit review"}
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                      className="min-h-11 font-semibold text-muted-foreground lg:min-h-8"
-                    disabled={reviewBusy}
+                    disabled={reviewBookingMutation.isPending}
                     onClick={() => setReviewDismissed(true)}
                   >
                     Not now
@@ -1624,17 +1607,17 @@ export default function Dashboard() {
                 size="sm"
                 variant="destructive"
                 className="font-semibold"
-                disabled={cancelBusy}
+                disabled={cancelBookingMutation.isPending}
                 onClick={() => void handleCancelRide()}
               >
-                {cancelBusy ? "Cancelling…" : "Cancel ride"}
+                {cancelBookingMutation.isPending ? "Cancelling…" : "Cancel ride"}
               </Button>
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
                 className="font-semibold text-muted-foreground"
-                disabled={cancelBusy}
+                disabled={cancelBookingMutation.isPending}
                 onClick={() => setCancelOpen(false)}
               >
                 Keep ride
@@ -1863,7 +1846,7 @@ export default function Dashboard() {
             >
               <div className="mx-auto w-full min-w-0 max-w-3xl space-y-4 lg:space-y-6">
                 <AnimatePresence mode="wait">
-                  {historyStatus === "error" ? (
+                  {historyFailed ? (
                     <motion.div
                       {...motionStateProps({ variants: page, reduced })}
                       key="error"
@@ -1876,18 +1859,18 @@ export default function Dashboard() {
                         Could not load your trips
                       </p>
                       <p className="mt-2 max-w-xs text-[13px] leading-relaxed text-muted-foreground">
-                        {historyError ??
+                        {(historyError instanceof Error ? historyError.message : null) ??
                           "Something went wrong while loading your trips."}
                       </p>
                       <Button
                         size="sm"
                         className="mt-6 font-semibold"
-                        onClick={() => void loadHistory()}
+                        onClick={() => void refetchBookings()}
                       >
                         Try again
                       </Button>
                     </motion.div>
-                  ) : historyStatus === "success" && historyGroups.length === 0 ? (
+                  ) : historyLoaded && historyGroups.length === 0 ? (
                     <motion.div
                       {...motionStateProps({ variants: page, reduced })}
                       key="empty"
@@ -1911,7 +1894,7 @@ export default function Dashboard() {
                         Book a ride
                       </Button>
                     </motion.div>
-                  ) : historyStatus === "success" ? (
+                  ) : historyLoaded ? (
                     <motion.div
                       {...motionStateProps({ variants: page, reduced })}
                       key="list"
@@ -2016,7 +1999,7 @@ export default function Dashboard() {
                                           </p>
                                         )}
                                       </div>
-                                    ) : historyReviewId === booking._id ? (
+                                    ) : openReviewId === booking._id ? (
                                       <motion.div
                                         initial={reduced ? false : { opacity: 0, y: 4 }}
                                         animate={reduced ? undefined : { opacity: 1, y: 0 }}
@@ -2100,7 +2083,7 @@ export default function Dashboard() {
                                         variant="outline"
                                         size="sm"
                                         className="min-h-11 w-full font-semibold lg:min-h-8"
-                                        disabled={historyReviewId !== null || historyReviewBusy}
+                                        disabled={openReviewId !== null || historyReviewBusy}
                                         onClick={() => openHistoryReview(booking)}
                                       >
                                          <Star aria-hidden="true" className="h-4 w-4 text-amber-500" />
