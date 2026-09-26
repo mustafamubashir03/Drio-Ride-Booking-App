@@ -30,16 +30,19 @@ export type BottomTabItem = {
   end?: boolean;
 };
 
-function ActiveOutline({ reduced }: { reduced: boolean }) {
+/**
+ * The active tab is marked by a single 2px solid accent line sitting on the top
+ * edge of that tab, with rounded ends. A line rather than an outlined box, so
+ * it reads as the tab's leading edge instead of a panel drawn around it.
+ */
+function ActiveTabLine({ reduced }: { reduced: boolean }) {
   return (
     <motion.span
-      layoutId="bottom-tabs-active-outline"
+      layoutId="bottom-tabs-active-line"
       aria-hidden="true"
-      className="absolute inset-x-[16%] top-0 h-full rounded-t-2xl bg-gradient-to-b from-drio-accent-light/70 via-drio-accent/35 to-transparent p-px"
+      className="absolute inset-x-[26%] top-0 h-[2px] rounded-full bg-primary"
       transition={{ duration: reduced ? 0 : 0.22, ease: [0.32, 0.72, 0, 1] }}
-    >
-      <span className="block h-full w-full rounded-t-[15px] bg-sidebar/95" />
-    </motion.span>
+    />
   );
 }
 
@@ -62,7 +65,7 @@ export default function BottomTabs({
 
   const inner = (isActive: boolean, item: BottomTabItem) => (
     <>
-      {isActive && <ActiveOutline reduced={reduced} />}
+      {isActive && <ActiveTabLine reduced={reduced} />}
       <span className="relative z-10 flex items-center justify-center">
         <item.icon
           strokeWidth={isActive ? 2.2 : 1.9}

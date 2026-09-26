@@ -320,13 +320,9 @@ export default function DriverLayout() {
           </div>
         </header>
 
-        {/* Page title, below the brand bar. lg:hidden because the desktop
-            sidebar and desktop header already carry the title. */}
-        <div className="shrink-0 px-4 pt-4 lg:hidden">
-          <h1 className="font-serif text-[20px] font-bold tracking-tight text-foreground">
-            {pageTitleFor(location.pathname)}
-          </h1>
-        </div>
+        {/* No page title on mobile: the driver map is the point of this screen,
+            and a heading block above it only steals map height. The bottom nav
+            already labels the current section. */}
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(4.25rem+max(0.75rem,env(safe-area-inset-bottom)))] lg:pb-0">
           {incomingRide ? (

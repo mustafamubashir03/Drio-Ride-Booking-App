@@ -70,28 +70,28 @@
 :root {
   --radius: 0.75rem;
 
-  --background: #282828;
+  /* Elevation ramp, darkest to lightest. The page is the base surface, cards
+     sit a step above it, and nested fills sit a step above that, so depth
+     reads as surface-on-surface rather than a flat grey field. */
+  --background: #1f1f1f;
   --foreground: #e6e6e6;
 
-  /* Surfaces are deliberately DARKER than --background so a card reads as a
-     distinct, slightly recessed panel against the page rather than blending
-     into it. Kept close in value to avoid crushing the text hierarchy. */
-  --card: #212121;
+  --card: #272727;
   --card-foreground: #e6e6e6;
 
-  --popover: #242424;
+  --popover: #2b2b2b;
   --popover-foreground: #e6e6e6;
 
   --primary: #e5bd97;
   --primary-foreground: #282828;
 
-  --secondary: #2a2a2a;
+  --secondary: #232323;
   --secondary-foreground: #e6e6e6;
 
   --muted: #2f2f2f;
   --muted-foreground: #b2b2b2;
 
-  --accent: #2a2a2a;
+  --accent: #2b2b2b;
   --accent-foreground: #e6e6e6;
 
   --destructive: #f87171;
@@ -107,7 +107,7 @@
   --chart-4: #f87171;
   --chart-5: #c084fc;
 
-  --sidebar: #282828;
+  --sidebar: #232323;
   --sidebar-foreground: #e6e6e6;
   --sidebar-primary: #e5bd97;
   --sidebar-primary-foreground: #282828;

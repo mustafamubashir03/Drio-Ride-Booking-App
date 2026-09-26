@@ -130,8 +130,11 @@ export default function MobileSheet({
           )}
         </AnimatePresence>
 
-        {/* Collapsed: the sheet is clipped to its peek height. Expanded: the
-            body scrolls normally. */}
+        {/* Collapsed: capped to the peek height but still scrollable, so a tall
+            ride card can be read by scrolling without expanding first.
+            Expanded: the body takes the full height and scrolls normally.
+            There is no drag handler, so scrolling here can never move the
+            sheet, and overscroll-contain stops the chain reaching the map. */}
         <div
           ref={contentRef}
           onFocusCapture={(event) => {
@@ -139,7 +142,7 @@ export default function MobileSheet({
             if (field instanceof HTMLElement && field.matches("input, textarea")) {
               // Tapping a field is a deliberate user action, so expanding here is
               // expected rather than surprising. It also guarantees a focused
-              // input is never left clipped inside the collapsed peek.
+              // input is never left out of view inside the collapsed peek.
               setExpanded(true);
               onFieldFocus?.(field);
             }
@@ -150,11 +153,7 @@ export default function MobileSheet({
             expanded ? "flex-1" : "shrink-0",
             contentClassName,
           )}
-          style={
-            panelMode || expanded
-              ? undefined
-              : { maxHeight: peekHeight, overflowY: "hidden" }
-          }
+          style={panelMode || expanded ? undefined : { maxHeight: peekHeight }}
         >
           {typeof children === "function" ? children({ expanded }) : children}
         </div>
