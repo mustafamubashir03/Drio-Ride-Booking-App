@@ -33,7 +33,13 @@ export default function MobileSheet({
   /** At `lg` the same DOM becomes a static side panel via these classes. */
   desktopClassName,
 }: {
-  children: ReactNode;
+  /**
+   * Either a node, or a render prop receiving the current expanded state. The
+   * render-prop form lets a caller present a genuinely different collapsed
+   * summary while keeping ONE state owner, so the collapsed and expanded views
+   * can never disagree about booking or ride status.
+   */
+  children: ReactNode | ((state: { expanded: boolean }) => ReactNode);
   peekHeight?: number;
   expandedVh?: number;
   label?: string;
@@ -150,7 +156,7 @@ export default function MobileSheet({
               : { maxHeight: peekHeight, overflowY: "hidden" }
           }
         >
-          {children}
+          {typeof children === "function" ? children({ expanded }) : children}
         </div>
       </div>
     </div>

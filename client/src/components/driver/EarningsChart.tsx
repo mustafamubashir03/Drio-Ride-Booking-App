@@ -24,6 +24,18 @@ import { formatFare } from "@/lib/format";
  * smoothed or invented on the client.
  */
 
+/**
+ * The server buckets earnings by UTC day, so every label must be rendered in
+ * UTC too. Formatting a UTC-midnight timestamp in local time shifts the label
+ * back a day for anyone west of UTC, which would file earnings under the wrong
+ * date. This keeps the label and the bucket in agreement.
+ */
+const fmtUTC = (
+  iso: string,
+  opts: Intl.DateTimeFormatOptions,
+): string =>
+  new Date(iso).toLocaleDateString("en-US", { ...opts, timeZone: "UTC" });
+
 /** Collapse long ranges into readable buckets without inventing values. */
 function bucketise(
   points: DriverEarningsSeries["points"],
@@ -31,7 +43,7 @@ function bucketise(
 ): { label: string; total: number; rides: number; from: string; to: string }[] {
   if (days <= 7) {
     return points.map((p) => ({
-      label: new Date(p.date).toLocaleDateString("en-US", { weekday: "short" }),
+      label: fmtUTC(p.date, { weekday: "short" }),
       total: p.total,
       rides: p.rides,
       from: p.date,
@@ -44,7 +56,7 @@ function bucketise(
 }
 
 const toBucket = (p: DriverEarningsSeries["points"][number]) => ({
-  label: new Date(p.date).toLocaleDateString("en-US", { day: "numeric", month: "short" }),
+  label: fmtUTC(p.date, { day: "numeric", month: "short" }),
   total: p.total,
   rides: p.rides,
   from: p.date,
@@ -57,10 +69,7 @@ function weeklyBuckets(points: DriverEarningsSeries["points"]) {
     const slice = points.slice(i, i + 7);
     if (slice.length === 0) continue;
     out.push({
-      label: new Date(slice[0].date).toLocaleDateString("en-US", {
-        day: "numeric",
-        month: "short",
-      }),
+      label: fmtUTC(slice[0].date, { day: "numeric", month: "short" }),
       total: slice.reduce((s, p) => s + p.total, 0),
       rides: slice.reduce((s, p) => s + p.rides, 0),
       from: slice[0].date,
@@ -83,12 +92,12 @@ function ChartTooltip({
   const d = payload[0].payload;
   const range =
     d.from === d.to
-      ? new Date(d.from).toLocaleDateString("en-US", {
+      ? fmtUTC(d.from, {
           day: "numeric",
           month: "short",
-          year: days > 30 ? "numeric" : undefined,
+          ...(days > 30 ? { year: "numeric" } : {}),
         })
-      : `${new Date(d.from).toLocaleDateString("en-US", { day: "numeric", month: "short" })} – ${new Date(d.to).toLocaleDateString("en-US", { day: "numeric", month: "short" })}`;
+      : `${fmtUTC(d.from, { day: "numeric", month: "short" })} – ${fmtUTC(d.to, { day: "numeric", month: "short" })}`;
 
   return (
     <div className="rounded-xl border border-border bg-popover px-3 py-2 shadow-lg">

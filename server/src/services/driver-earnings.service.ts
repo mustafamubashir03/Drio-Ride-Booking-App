@@ -79,11 +79,16 @@ export const getDriverEarningsSeriesService = async (
         const id =
             booking._id instanceof Types.ObjectId
                 ? booking._id
-                : new Types.ObjectId(booking._id);
+                : new Types.ObjectId(String(booking._id));
         const completedAt = id.getTimestamp().getTime();
         if (completedAt < firstDayStart) continue;
+        if (completedAt >= startOfTodayUtc + DAY_MS) continue;
 
-        const dayStart = startOfTodayUtc - Math.floor((startOfTodayUtc - completedAt) / DAY_MS) * DAY_MS;
+        // Snap to the UTC day that contains this ride. Deriving the day from the
+        // epoch directly avoids the sign problem of subtracting from
+        // startOfTodayUtc, where a ride later today yields a negative offset
+        // and Math.floor would round it into the following day.
+        const dayStart = Math.floor(completedAt / DAY_MS) * DAY_MS;
         const bucket = buckets.get(dayStart);
         if (!bucket) continue;
 

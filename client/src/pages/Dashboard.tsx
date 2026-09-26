@@ -991,19 +991,29 @@ export default function Dashboard() {
      variant lives in normal flow below the map. Same components, same
      logic — only placement & id prefixes differ per variant. */
 
-  const renderBookingSurface = (variant: "desktop" | "mobile") => {
+  const renderBookingSurface = (
+    variant: "desktop" | "mobile" | "peek",
+  ) => {
     const compact = variant === "mobile";
-    const pfx = compact ? "m-" : "";
+    // "peek" is the sheet's collapsed state. It shows only what a rider needs
+    // to act on: the From/To pair, the fare they will pay, and the primary CTA.
+    // The vehicle picker and route detail live in the expanded sheet, so the
+    // primary action is never pushed below the fold.
+    const peek = variant === "peek";
+    const pfx = compact || peek ? "m-" : "";
     return (
       <div className={compact ? "space-y-4" : "space-y-5"}>
-        {/* Greeting */}
-        <div>
-          <p className="text-[13px] text-muted-foreground">
-            Good to see you
-            {user?.name ? `, ${user.name.split(" ")[0]}` : ""}. Where to
-            today?
-          </p>
-        </div>
+        {/* Greeting — expanded only; the collapsed sheet leads with the
+            pickup/destination pair instead. */}
+        {!peek && (
+          <div>
+            <p className="text-[13px] text-muted-foreground">
+              Good to see you
+              {user?.name ? `, ${user.name.split(" ")[0]}` : ""}. Where to
+              today?
+            </p>
+          </div>
+        )}
 
         {/* Address block */}
         <div
@@ -1045,11 +1055,12 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Route status */}
-        <div
-          id={`${pfx}route-info`}
-          className="rounded-xl border border-border/70 bg-muted/25 px-4 py-3"
-        >
+        {/* Route status — expanded only. */}
+        {!peek && (
+          <div
+            id={`${pfx}route-info`}
+            className="rounded-xl border border-border/70 bg-muted/25 px-4 py-3"
+          >
           {routeStatus === "loading" && (
             <p className="text-[12px] text-muted-foreground">
               Calculating route…
@@ -1071,14 +1082,16 @@ export default function Dashboard() {
               {routeError ?? "Could not calculate a route."}
             </p>
           )}
-          {routeStatus === "idle" && (
-            <p className="text-[12px] text-muted-foreground">
-              Select From and To to see the route.
-            </p>
-          )}
-        </div>
+            {routeStatus === "idle" && (
+              <p className="text-[12px] text-muted-foreground">
+                Select From and To to see the route.
+              </p>
+            )}
+          </div>
+        )}
 
-        {/* Vehicle selector */}
+        {/* Vehicle selector — expanded only. */}
+        {!peek && (
         <div>
           <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground mb-3">
             Choose ride type
@@ -1122,8 +1135,10 @@ export default function Dashboard() {
             })}
           </motion.div>
         </div>
+        )}
 
-        {/* Fare estimate */}
+        {/* Fare estimate — kept in the collapsed view, because the fare is the
+            number a rider needs before committing. */}
         <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/25 px-4 py-3">
           <div>
             <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
@@ -1827,40 +1842,48 @@ export default function Dashboard() {
             <div className="absolute inset-x-[380px] bottom-0 z-10 hidden max-h-[55%] overflow-y-auto overscroll-contain lg:block">
               {renderRideStatusSurface("desktop")}
             </div>
-            {/* Mobile: real drag-to-expand sheet floating over the map, so the
-                map stays visible above it. Desktop keeps the fixed side panel. */}
+            {/* Mobile: a real expand/collapse sheet floating over the map, so
+                the map stays visible above it. Collapsed shows the pickup pair,
+                the fare and the CTA; expanded adds the vehicle picker and route
+                detail. Desktop keeps the fixed side panel. */}
             <MobileSheet
               contentRef={mobileSheetRef}
               onFieldFocus={revealMobileField}
-              peekHeight={rideBooked || cancelOpen ? 260 : 210}
-              label={rideBooked ? "Expand or collapse ride details" : "Expand or collapse booking options"}
+              peekHeight={rideBooked || cancelOpen ? 300 : 320}
+              label={
+                rideBooked
+                  ? "Expand or collapse ride details"
+                  : "Expand or collapse booking options"
+              }
               peekHint={
                 <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
                   {rideBooked ? "Your ride" : cancelOpen ? "Cancel your ride" : "Where to?"}
                 </p>
               }
             >
-              {cancelOpen || rideBooked ? (
-                <div className="overscroll-contain">
-                  {renderRideStatusSurface("mobile")}
-                </div>
-              ) : (
-                <div className="overscroll-contain pb-2 pt-1">
-                  {/* Only surfaced while it is actionable: once a pickup exists
-                      or location resolved, it would just be noise. */}
-                  {locationUi !== "granted" && !fromLocation && (
-                    <LocationPermission
-                      className="mb-3"
-                      state={locationUi}
-                      onRequest={() => {
-                        setLocationUi("loading");
-                        requestLocationRef.current?.();
-                      }}
-                    />
-                  )}
-                  {renderBookingSurface("mobile")}
-                </div>
-              )}
+              {({ expanded }) =>
+                cancelOpen || rideBooked ? (
+                  <div className="overscroll-contain">
+                    {renderRideStatusSurface("mobile")}
+                  </div>
+                ) : (
+                  <div className="overscroll-contain pb-2 pt-1">
+                    {/* Only surfaced while it is actionable: once a pickup exists
+                        or location resolved, it would just be noise. */}
+                    {!expanded && locationUi !== "granted" && !fromLocation && (
+                      <LocationPermission
+                        className="mb-3"
+                        state={locationUi}
+                        onRequest={() => {
+                          setLocationUi("loading");
+                          requestLocationRef.current?.();
+                        }}
+                      />
+                    )}
+                    {renderBookingSurface(expanded ? "mobile" : "peek")}
+                  </div>
+                )
+              }
             </MobileSheet>
           </div>
         )}
