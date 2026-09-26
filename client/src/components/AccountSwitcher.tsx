@@ -69,6 +69,7 @@ export function AccountSwitcher({
   placement = "top",
   compact = false,
   live = false,
+  alwaysShowTrigger = false,
 }: {
   children?: ReactNode;
   placement?: "top" | "bottom";
@@ -79,6 +80,14 @@ export function AccountSwitcher({
    * component deliberately starts no socket or availability subscription.
    */
   live?: boolean;
+  /**
+   * Render the trigger even when only one context is available, instead of
+   * falling back to `children`. For a sidebar that wants exactly one account
+   * control: the fallback is caller-supplied markup, which is what produced a
+   * stacked identity row plus a separate Sign out button. With this set, the
+   * trigger is the only control and Sign out lives inside its menu.
+   */
+  alwaysShowTrigger?: boolean;
 }) {
   const navigate = useNavigate();
   const { data: session, isPending } = authClient.useSession();
@@ -180,15 +189,31 @@ export function AccountSwitcher({
     .join("");
 
   if (isPending || checking) {
-    return compact ? (
-      <div
-        className="h-11 w-11 animate-pulse rounded-full bg-muted"
-        aria-label="Loading account"
-        aria-busy="true"
-      />
-    ) : (
-      <>{children}</>
-    );
+    if (compact) {
+      return (
+        <div
+          className="h-11 w-11 animate-pulse rounded-full bg-muted"
+          aria-label="Loading account"
+          aria-busy="true"
+        />
+      );
+    }
+    // With the trigger forced on there is no children fallback to show, so hold
+    // the trigger's shape rather than collapsing the row to nothing and then
+    // popping the control in.
+    if (alwaysShowTrigger) {
+      return (
+        <div
+          className="flex h-8 w-full items-center gap-1.5 rounded-lg px-1.5"
+          aria-label="Loading account"
+          aria-busy="true"
+        >
+          <span className="h-6 w-6 shrink-0 animate-pulse rounded-full bg-muted" />
+          <span className="h-2.5 w-24 animate-pulse rounded-full bg-muted" />
+        </div>
+      );
+    }
+    return <>{children}</>;
   }
 
   // Build available contexts
@@ -220,8 +245,10 @@ export function AccountSwitcher({
   // Only show contexts the user has access to
   const availableContexts = contexts.filter((ctx) => ctx.available);
 
-  // If only passenger is available, don't show switcher
-  if (availableContexts.length <= 1) {
+  // If only passenger is available, don't show switcher — unless the caller has
+  // asked for the trigger unconditionally, in which case the trigger is the
+  // single account control and still needs to expose Sign out.
+  if (!alwaysShowTrigger && availableContexts.length <= 1) {
     return <>{children}</>;
   }
 
