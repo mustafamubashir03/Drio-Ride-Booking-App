@@ -30,6 +30,11 @@ This README explains, in plain language, what the project does, how it is put to
 16. [Security Notes](#security-notes)
 17. [What Comes Next](#what-comes-next)
 
+**Appended updates** (newest last; everything above them is retained as history):
+
+- [Latest Implementation Update — 2026-09-25](#latest-implementation-update--2026-09-25)
+- [Latest Implementation Update — 2026-09-27](#latest-implementation-update--2026-09-27) — production deployment topology, the Render static-site redirect defect and its fix, driver earnings analytics, and the frontend decisions taken most recently.
+
 ---
 
 ## What is Drio?
@@ -1108,3 +1113,176 @@ cd socket-server && npx tsc --noEmit
 The client production build is the authoritative frontend type/build check. The repository-wide client lint still contains pre-existing React Compiler/hook-rule findings outside the current driver-map changes.
 
 *Last updated: 2026-09-25. The sections above are retained as historical project documentation; this section reflects the latest implemented behavior and deployment configuration.*
+
+---
+
+## Latest Implementation Update — 2026-09-27
+
+Appended in the same way as the previous update: everything above is retained as history, and this section documents the deployment topology we settled on, the single hardest bug we had to diagnose, and the frontend decisions taken since — each with the reasoning, because the reasoning is the part that is easy to lose.
+
+### Production deployment topology
+
+The frontend is a **Render Static Site**; the main API runs as a **Vercel serverless function**; a second Render web service and a Render Key Value instance run the socket server and Redis.
+
+```text
+Browser
+  ↓  https://drio-ride-booking-app.onrender.com
+Render Static Site  (drio-ride-booking-app, runtime: static)
+  ├─ /*            → /index.html            (SPA fallback)
+  └─ /api/*        → https://drio-main-server.vercel.app/api/*
+                        ↓
+                      Vercel function  (/api/index → dist/vercel.js)
+                        ↓
+                      Express app (dist/vercel.js → src/app.ts)
+                        ↓
+                      Better Auth + MongoDB + Redis
+```
+
+`render.yaml` declares four services: `drio-redis` (keyvalue), `drio-server` (web, rootDir `server`), `drio-socket-server` (web), and `drio-ride-booking-app` (static, rootDir `client`, `staticPublishPath: ./dist`).
+
+**Why the frontend must stay on the static site's own origin.** Everything browser-facing auth-related is pinned to `https://drio-ride-booking-app.onrender.com`:
+
+- `BETTER_AUTH_URL` on the API points at the Render origin, so Better Auth builds its links, cookies and redirects against it.
+- `VITE_BETTER_AUTH_URL` in the client points at the same origin, so the browser talks to a same-origin `/api/*` path.
+- The Google OAuth redirect URI registered in Google Cloud is `https://drio-ride-booking-app.onrender.com/api/auth/callback/google`.
+
+That last point is the constraint that shaped everything in the next section. If the browser called Vercel directly, the session and state cookies would become third-party cookies for a different site and modern browsers would drop them. Same-origin is not a preference here; it is what makes the auth flow work at all.
+
+`TRUSTED_ORIGINS` therefore has to include the Render origin. `server/src/config/auth.config.ts` always prepends `BETTER_AUTH_URL` to whatever the variable contains, so the origin is trusted even if it is not repeated in the file; `server/.env.example` lists it explicitly alongside the two localhost origins for clarity.
+
+### The Render static-site redirect defect (the hardest bug in this project)
+
+**Symptom.** Google sign-in completed correctly on the server and then the browser sat on a blank page at the callback URL. The session cookies were issued and the user was never signed in.
+
+**What the server was actually doing (proven, not assumed).** Instrumenting the HTTP boundary showed the full first callback succeeding: `verificationFound=true`, `tokenExchangeReached=true`, `sessionCreationSucceeded=true`, `sessionCookieIssued=true`, `stateCookieClearedByServer=true`, and a `302` to `https://drio-ride-booking-app.onrender.com/dashboard` carrying `Set-Cookie` for `__Secure-better-auth.session_token`, `__Secure-better-auth.session_data`, and a cleared `__Secure-better-auth.state`. Total time ≈ 2.25 s.
+
+**Root cause.** Render's static site rewrites `/api/*` to the upstream, and **for top-level document navigations it rewrites the upstream 3xx status to 200** while keeping `Location` and `Set-Cookie` and replacing the body with `content-length: 0`.
+
+A browser obeys `Location` only on a 3xx. On a 200 it has no redirect to follow, and the body is empty, so it renders nothing. That is the blank page. The `Location` header is still present in the response, simply inert.
+
+The evidence that pinned it down, each row isolating one variable:
+
+| Probe | Result | What it ruled out |
+| --- | --- | --- |
+| Callback direct on Vercel vs through Render | `302` vs `200` | The API is not producing a bad response |
+| A generic `/api/auth/error?error=probe` redirect | `302` vs `200` | It is **not** OAuth-specific — any 3xx through the rewrite is mangled |
+| Same request as a `fetch` (`Sec-Fetch-Mode: cors`) | `302` preserved | Not a cookie, state or query problem |
+| Same request as a navigation (`Sec-Fetch-Mode: navigate`) | `200` | It is **navigation-shaped requests only** |
+| HTTP/1.1 vs HTTP/2 | identical | Not protocol-specific |
+| Rewrite destination changed to the Render web service instead of Vercel | still `200` | Not upstream-specific; it is the static-site edge |
+| `cf-cache-status: BYPASS`, no `Age`, `x-vercel-id` present | not a cache hit | Not a caching artifact |
+| A `200` JSON body through the same edge | arrived byte-for-byte | **Bodies survive; only the status line is rewritten** |
+
+That last row is what made a fix possible from inside the application at all.
+
+**What was explicitly ruled out, and why it matters.** Better Auth was not at fault, MongoDB-backed OAuth state was not at fault, Vercel instance/region separation was not at fault, the Google token exchange was not at fault, and session creation was not at fault. Better Auth 1.7 stores OAuth state in MongoDB (the `verification` collection) and consumes the record on first use, which was confirmed to work across separate function instances and regions. The `state_mismatch` seen afterwards was a **replay of an already-consumed single-use state**, a consequence of the successful callback, not its cause. We deliberately did not weaken state validation, CSRF, cookies, or the verification lifecycle to make that message go away.
+
+**The fix.** Since the edge preserves bodies and a `200` but not a `3xx`, the backend emits a status the edge *does* preserve and carries the redirect in the body instead. For two routes only:
+
+- `GET /api/auth/callback/*` (OAuth provider callbacks)
+- `GET /api/auth/verify-email` (the email verification link)
+
+A `3xx` carrying a `Location` becomes `200` plus a self-contained HTML document with a `<meta http-equiv="refresh">` and a `location.replace()`. The browser stores the `Set-Cookie` headers first (they arrive on the same response) and then navigates onward.
+
+Code: `server/src/middlewares/auth-redirect-fallback.middleware.ts`, with the document in `server/src/middlewares/redirect-document.ts`, mounted in `server/src/app.ts` before the Better Auth handler.
+
+**Why Better Auth was not modified.** Everything security-relevant happens upstream of this middleware and is forwarded verbatim: state creation and validation, the verification lifecycle, token exchange, session creation, and cookie attributes. The middleware only re-packages a redirect Better Auth has already decided on, for a request Better Auth has already handled. It cannot turn a failure into a success, because it only ever runs on a response that already exists.
+
+**Deliberate limits, because a "fix all 3xx" middleware would be a liability:**
+
+- Scoped to those two routes and to `GET`. Not a generic 3xx-to-HTML converter; every other route keeps real redirect semantics for API clients.
+- Only a `3xx` that actually carries a `Location` is converted.
+- The target must be an absolute `http(s)` URL on the configured auth origin. Anything else is logged and passed through untouched, so this can never become an open redirect.
+- The wrapped response is a bodyless 3xx, so there is no existing body to clobber.
+- Collapsed panels are irrelevant here: the fallback is a server-side response and has nothing to do with the client's sheet state.
+
+**Email verification specifically.** Better Auth's endpoint is `GET /api/auth/verify-email?token=<jwt>&callbackURL=<encoded>` (`basePath` is `/api/auth`; the link is built as `${baseURL}/verify-email?...`). On success it sets `emailVerified`, issues a session when `autoSignInAfterVerification` is on, and redirects. Success is identified by the **absence** of an `error` query parameter, because `redirectOnError` always appends `?error=<code>`. A success is sent to a **fixed** `${BETTER_AUTH_URL}/login`, deliberately not built from the request's `callbackURL`, so a crafted link cannot steer the recipient. A failure keeps Better Auth's own destination and error code so the frontend still receives the reason. Off-origin `callbackURL` values are already rejected upstream by Better Auth's own `originCheck` (HTTP 403 `INVALID_CALLBACK_URL`), and our middleware refuses them a second time.
+
+**The transitional page.** `redirect-document.ts` renders a small Drio-branded screen using the tokens already in `client/src/index.css` (`--background #1f1f1f`, `--card #272727`, `--drio-accent #e5bd97`, `--foreground #e6e6e6`). It is self-contained with no external assets, works with JavaScript disabled via the meta refresh, honours `prefers-reduced-motion`, and never prints the target URL as body text. Copy differs per flow: "You're signed in" for OAuth, "Email verified" for verification.
+
+**Two failed attempts worth recording, because they shaped the final design.**
+
+1. A first attempt injected the HTML by monkey-patching `res.end` and returning a `302`, trusting the edge to convert it. It was reverted: the response is written by `better-call` as `setHeader` → `statusCode` → `writeHead` → `end`, and the status was still a 3xx, so it was a guess.
+2. The committed version then hung the harness. `writeHead` had already flushed the status line and headers, so an `!headersSent` guard skipped the body while `Content-Length` was already set — the client waited forever for bytes that never arrived. The fix was to build the document in `writeHead` and emit the bytes in `end`.
+
+**How to remove it.** Once the browser-facing origin is served by something that relays 3xx intact, delete `auth-redirect-fallback.middleware.ts`, `redirect-document.ts` and the single `app.use` in `app.ts`. `oauth-diag.middleware.ts` is a separate temporary diagnostic that should be removed with it.
+
+### New endpoint: driver earnings analytics
+
+| Route | Auth | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/driver/earnings` | `requireAuth` + `requireDriverCapability` | Totals for the signed-in driver |
+| `GET /api/v1/driver/earnings/series?days=7\|30\|90` | same | Bucketed daily series for the chart |
+
+Both are scoped to `req.authUser.id` and are served from the same router that already applies the guards, so a passenger cannot read them. The range is normalized server-side.
+
+**The data is deliberately honest.** Only `status: "completed"` bookings count, and only the persisted `Booking.fare` is summed. There is no commission, platform fee, driver share, net fare or payout field anywhere in the model, so none is invented here. The existing product definition treats a completed fare as the driver's earnings, and the chart shows exactly that.
+
+**Two real bugs found and fixed while building this.**
+
+- *Day bucketing.* The bucket index was originally derived by flooring the offset from `startOfTodayUtc`. A ride later the same day produces a **negative** offset, and `Math.floor` rounds a negative value down to the next lower day, so a same-day ride was counted in the following day's bucket. Buckets are now whole UTC days computed directly from the timestamp — `Math.floor(completedAt / DAY_MS) * DAY_MS` — so every ride lands in exactly one bucket.
+- *Chart labels.* Labels and tooltips were formatted in local time, so west of UTC they showed the previous day. They are now formatted explicitly in UTC to match the buckets.
+
+The chart is `recharts`, lazy-loaded so the passenger bundle does not eagerly include it.
+
+### Frontend architecture decisions
+
+**One bottom navigation for both portals.** `components/BottomTabs.tsx` is rendered by the passenger and driver portals with the same height, icon and label sizing, spacing and active treatment; only the destinations differ, so the two portals cannot drift apart visually.
+
+**The mobile sheet has three stops, and no swipe.** `components/MobileSheet.tsx` cycles `collapsed` (44px handle) → `peek` (resting height) → `expanded` (78svh) from a single control whose chevron points at the *next* stop, so the control explains where a tap will go. There is deliberately **no drag gesture**: a previous implementation tracked pointer velocity and snapped to the nearest stop, and in practice it fought scrolling, could not be dismissed reliably, and on the passenger side expanded to the top with no dependable way back down. Reliability beat the gesture, so the gesture was removed rather than retuned. Every position change now comes from the control, animated with a spring added to the shared motion system (`motion/transitions.ts`), which collapses to zero duration under `prefers-reduced-motion`.
+
+The `78svh` cap stays in **plain CSS** on the wrapper rather than in the animation, deliberately. It is the authority, it cannot be affected by the animation, and `svh` excludes the browser chrome that `window.innerHeight` includes. The animated value is `height`, resolved to pixels at every stop, so the spring interpolates between a single unit.
+
+**The scroll region must be bounded at every stop.** The sheet's content used to be `flex-1` only when expanded and `shrink-0` otherwise. At the smaller stops it then took its full content height while the card clipped it, and an element sized to its own content has nothing to scroll — so the lower part of the form was unreachable. It is now `min-h-0 flex-1` at all three stops. `isDesktop` is seeded synchronously from `matchMedia` rather than in an effect, so a desktop first paint no longer briefly runs the mobile branch.
+
+**Exactly one account control in the sidebar.** `AccountSwitcher` falls back to caller-supplied `children` when there is only one available context. The sidebar had been passing an identity row *plus* a separate Sign out button as that fallback, so a single-context account saw those two stacked, and neither was a context switcher. The opt-in `alwaysShowTrigger` prop removes the fallback: the switcher's own trigger is the only control, and Sign out lives inside its menu. The prop defaults to `false`, so the driver layout is untouched.
+
+**Auth screens are compact on purpose.** The hero panel now carries branding only on mobile, so the card's heading is the single heading instead of the marketing line and the functional heading being stacked. The banner, card padding and gaps were tightened; inputs stay `h-12` and buttons `h-11` so touch targets and iOS zoom behaviour are unchanged. Only chrome was reduced, never the controls.
+
+**A lesson we had to learn twice: scope mobile work to mobile.** One change floated the booking and driver panels over the map on desktop, on the theory that the desktop card was too large. That altered a laptop layout that had already been reviewed and approved, and it had to be reverted byte-for-byte. Both dashboards are now identical to commit `87254a9` again: a 380px bordered column beside the map, the ride-status panel inset past it. The lesson is recorded here deliberately: **when a task says the problem is on mobile, do not restructure the desktop layout, even if the desktop layout looks like it could be improved.** A separate, explicit request is the right way to change it.
+
+The same pattern bit twice more: an `lg:hidden` added to hide a duplicated profile left an empty decorative band on desktop, and a negative-margin profile card left only 4px of space under its content. Prefer fixing the *cause* of a duplication to hiding one of its halves.
+
+### How we verify, and a testing lesson
+
+Frontend invariants are checked by small Node harnesses in `.harness/` (gitignored, deliberately not part of the repo). They assert against the **real source**, and the sheet harness renders the **real component** through Vite's SSR pipeline and reads the emitted markup.
+
+The reason that matters: an earlier harness asserted on source text with regular expressions and passed happily while the component was genuinely broken in the browser. Rendering it and reading the actual `style` and `class` attributes is what caught it. A test that cannot fail when the feature is broken is worse than no test, because it reports false confidence.
+
+### Verified in this milestone
+
+| Check | Result |
+| --- | --- |
+| Google OAuth, real browser | Completes, lands on an authenticated `/dashboard` |
+| Email verification, real recipient | Reaches the verification endpoint and no longer renders a blank page |
+| OAuth fallback harness | 43 checks pass |
+| Auth UI audit | 40 checks pass |
+| Desktop layout harness | 53 checks pass, both dashboards diff clean against `87254a9` |
+| Tab indicator / account control | 49 checks pass |
+| Mobile sheet structure | 52 checks pass |
+| Mobile sheet rendered output | 19 checks pass |
+| Driver profile | 32 checks pass |
+| Client `tsc -b` | Pass |
+| Client production build | Pass |
+| Client lint | 5 pre-existing warnings, 0 errors |
+
+What could **not** be verified here: there is no browser in the development environment, so painted appearance at each breakpoint and the spring animation in motion were confirmed by code-level and rendered-markup checks and by human review on a real device, not by automated visual testing.
+
+### Environment notes
+
+| Variable | Consumer | Purpose |
+| --- | --- | --- |
+| `DRIO_DISABLE_EMAIL_VERIFICATION` | Main API | Set to `true` in `render.yaml`, which turns off `requireEmailVerification` and `sendOnSignUp`. The verification link still works, because the resend button calls `send-verification-email` directly. |
+| `VITE_DEPLOY_ENV` | Browser | `render` in production; helps runtime URL resolution |
+| `SOCKET_SERVER_URL` | Main API | Render injects the socket server's `RENDER_EXTERNAL_URL` |
+| `MAIN_API_URL` | Socket server | Render injects the main API's `RENDER_EXTERNAL_URL` |
+
+### Still temporary — do not forget these
+
+| File | Why it exists | Remove when |
+| --- | --- | --- |
+| `server/src/middlewares/oauth-diag.middleware.ts` | Read-only OAuth diagnostics. Logs presence flags, lengths, cookie names and status codes only — never a token, code, cookie value or secret. | The redirect problem is permanently solved |
+| `server/src/middlewares/auth-redirect-fallback.middleware.ts` | Carries the callback/verification redirect in the body | The browser-facing origin relays 3xx intact |
+| `server/src/middlewares/redirect-document.ts` | The branded transitional document | Same as above |
+
+*Last updated: 2026-09-27. The sections above are retained as historical project documentation; this section reflects the deployment topology, the redirect-defect fix, and the frontend decisions taken most recently.*
