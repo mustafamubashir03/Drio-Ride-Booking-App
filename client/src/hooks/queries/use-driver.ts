@@ -87,13 +87,28 @@ export function useDriverAvailabilityQuery() {
   });
 }
 
+/**
+ * Imperative read used by the dashboard shell to decide whether to reconnect the
+ * socket on mount. It needs the persisted status once, not a subscription, so it
+ * shares the cache instead of issuing a separate request.
+ */
+export function ensureDriverAvailability(queryClient: QueryClient) {
+  return queryClient.ensureQueryData({
+    queryKey: queryKeys.driver.availability(),
+    queryFn: fetchDriverAvailability,
+  });
+}
+
 export function useSetDriverAvailabilityMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (status: DriverAvailabilityStatus) => setDriverAvailabilityApi(status),
     onSuccess: async (availability: DriverAvailability) => {
+      // An availability change also retires the active ride, so that query is
+      // refreshed with it rather than left describing a dispatch that ended.
       queryClient.setQueryData(queryKeys.driver.availability(), availability);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.driver.activeRide() });
     },
   });
 }
@@ -134,6 +149,12 @@ function useInvalidateDriverRides() {
 
   return async (ride: DriverRide) => {
     queryClient.setQueryData(queryKeys.driver.ride(ride._id), ride);
+    // A ride that has reached a terminal state is no longer the active one.
+    // Reflect that in the cache straight away so the live-trip card clears
+    // immediately, then let the refetch below confirm it against the server.
+    if (ride.status === "completed" || ride.status === "cancelled") {
+      queryClient.setQueryData(queryKeys.driver.activeRide(), null);
+    }
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.driver.activeRide() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.driver.rides() }),

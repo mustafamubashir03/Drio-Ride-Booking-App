@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,8 @@ import { motion } from "motion/react";
 import { useMotionSystem } from "@/motion/use-motion";
 import { useDriverSocket } from "@/hooks/use-driver-socket";
 import { IncomingRideRequest } from "@/components/driver/IncomingRideRequest";
-import { confirmBooking, fetchDriverAvailability } from "@/lib/driver-api";
+import { ensureDriverAvailability, useConfirmBookingMutation } from "@/hooks/queries/use-driver";
+import { queryKeys } from "@/lib/query-keys";
 
 const navItems: Array<{
   to: string;
@@ -101,6 +103,8 @@ export default function DriverLayout() {
   })?.user;
   const driverId = (session as unknown as { user?: { id?: string } })?.user?.id;
   const location = useLocation();
+  const queryClient = useQueryClient();
+  const confirmMutation = useConfirmBookingMutation();
 
   const [incomingRide, setIncomingRide] = useState<IncomingRideRequestData | null>(null);
   const handledRideIdsRef = useRef<Set<string>>(new Set());
@@ -150,9 +154,13 @@ export default function DriverLayout() {
         handledRideIdsRef.current.add(data.rideId);
         setRideRefreshKey((k) => k + 1);
         setIncomingRide((cur) => (cur && cur.rideId === data.rideId ? null : cur));
+        // Targeted: a terminal status is persisted server state, so the cached
+        // active ride is refreshed. Non-terminal updates and incoming ride
+        // offers are realtime UI concerns and invalidate nothing.
+        void queryClient.invalidateQueries({ queryKey: queryKeys.driver.activeRide() });
       }
     },
-    []
+    [queryClient]
   );
 
   const { connected, connect, disconnect, emitLocation } = useDriverSocket(
@@ -165,7 +173,9 @@ export default function DriverLayout() {
   const handleAcceptRide = useCallback(async (rideId: string) => {
     setAcceptingRideId(rideId);
     try {
-      await confirmBooking(rideId);
+      // The mutation refreshes the active ride, the ride history and earnings;
+      // the context bump is kept so any other consumer of the signal still runs.
+      await confirmMutation.mutateAsync(rideId);
       handledRideIdsRef.current.add(rideId);
       setIncomingRide((cur) => (cur && cur.rideId === rideId ? null : cur));
       setRideRefreshKey((k) => k + 1);
@@ -183,13 +193,14 @@ export default function DriverLayout() {
     } finally {
       setAcceptingRideId(null);
     }
-  }, []);
+  }, [confirmMutation]);
 
   // If the driver's persisted status is already "online", connect automatically
   // on mount (same connect() the toggle path uses) so a page reload doesn't
-  // leave the driver with no live socket.
+  // leave the driver with no live socket. One-shot read through the shared
+  // cache rather than a private request.
   useEffect(() => {
-    void fetchDriverAvailability()
+    void ensureDriverAvailability(queryClient)
       .then((value) => {
         if (value.status === "online") connect();
       })

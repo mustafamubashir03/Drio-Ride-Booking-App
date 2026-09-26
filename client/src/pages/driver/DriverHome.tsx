@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import Map from "@/components/Map";
@@ -13,19 +13,18 @@ import { AnimatePresence, motion } from "motion/react";
 import { motionStateProps, useMotionSystem } from "@/motion/use-motion";
 import type { DriverDashboardContext } from "./DriverLayout";
 import {
-  fetchDriverActiveRide,
-  fetchDriverAvailability,
-  fetchDriverEarnings,
-  fetchDriverRating,
-  setDriverAvailability,
-  transitionDriverRide,
+  useDriverActiveRideQuery,
+  useDriverAvailabilityQuery,
+  useDriverEarningsQuery,
+  useDriverRatingQuery,
+  useSetDriverAvailabilityMutation,
+  useTransitionDriverRideMutation,
+} from "@/hooks/queries/use-driver";
+import {
   DRIVER_RIDE_STATUS_LABEL,
-  type DriverAvailability,
-  type DriverEarningsSummary,
   type DriverRide,
   type DriverRideAction,
 } from "@/lib/driver-api";
-import type { DriverRatingSummary } from "@/lib/bookings-api";
 import type { SelectedLocation } from "@/lib/places-api";
 import {
   formatCoordinates,
@@ -90,22 +89,46 @@ export default function DriverHome() {
   const driverId = (session as unknown as { user?: { id?: string } })?.user?.id;
   const { page, stagger, reduced } = useMotionSystem();
   const { connected, connect, disconnect, emitLocation, rideRefreshKey } = useOutletContext<DriverDashboardContext>();
-  const [availability, setAvailability] = useState<DriverAvailability | null>(null);
-  const [availabilityLoading, setAvailabilityLoading] = useState(true);
-  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
-  const [availabilitySubmitting, setAvailabilitySubmitting] = useState(false);
+  // Stable driver server data. Availability, the active ride, earnings and the
+  // rating aggregate are all REST reads that change when this driver acts, so
+  // they are cached. Realtime concerns stay out of here: GPS and the socket
+  // connection come from useDriverLocation / the dashboard context, and the ride
+  // lifecycle is driven by explicit transitions plus a refetch, never by a
+  // location packet.
+  const {
+    data: availability,
+    isPending: availabilityLoading,
+    error: availabilityErrorRaw,
+    refetch: refetchAvailability,
+  } = useDriverAvailabilityQuery();
+  const availabilityError =
+    availabilityErrorRaw instanceof Error ? availabilityErrorRaw.message : null;
+  const availabilityMutation = useSetDriverAvailabilityMutation();
 
-  const [activeRide, setActiveRide] = useState<DriverRide | null>(null);
-  const [activeLoading, setActiveLoading] = useState(true);
-  const [activeError, setActiveError] = useState<string | null>(null);
+  const {
+    data: activeRide = null,
+    isPending: activeLoading,
+    error: activeErrorRaw,
+    refetch: refetchActiveRide,
+  } = useDriverActiveRideQuery();
+  const activeError = activeErrorRaw instanceof Error ? activeErrorRaw.message : null;
 
+  // Transient snapshot of the ride that just finished, for the confirmation
+  // panel. Not a server resource, so it stays local state.
   const [completedRide, setCompletedRide] = useState<DriverRide | null>(null);
-  const [summary, setSummary] = useState<DriverEarningsSummary | null>(null);
-  const [rating, setRating] = useState<DriverRatingSummary | null>(null);
-  const [ratingStatus, setRatingStatus] = useState<"loading" | "success" | "error">("loading");
-  const [actionBusy, setActionBusy] = useState(false);
+  const { data: summary, refetch: refetchSummary } = useDriverEarningsQuery();
+  const {
+    data: rating,
+    isPending: ratingPending,
+    isError: ratingFailed,
+    isSuccess: ratingLoaded,
+    refetch: refetchRating,
+  } = useDriverRatingQuery();
+  const transitionMutation = useTransitionDriverRideMutation();
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // GPS stays outside React Query entirely: it is a realtime stream pushed over
+  // the socket on a throttle, not server state that can be cached or invalidated.
   const location = useDriverLocation({
     onLocationUpdate: (loc) => {
       if (driverId) {
@@ -123,9 +146,6 @@ export default function DriverHome() {
     throttleMs: 3000,
   });
   const startLocation = location.start;
-  const availabilityLoadSeq = useRef(0);
-  const activeRideLoadSeq = useRef(0);
-  const ratingLoadSeq = useRef(0);
 
   const from: SelectedLocation | null = useMemo(
     () => (activeRide ? toLocation(activeRide.source) : null),
@@ -198,82 +218,20 @@ export default function DriverHome() {
     if (!connected) connect();
   }, [activeRideNeedsLocation, connected, connect, startLocation]);
 
-  const loadAvailability = async () => {
-    const seq = ++availabilityLoadSeq.current;
-    setAvailabilityLoading(true);
-    setAvailabilityError(null);
-    try {
-      const value = await fetchDriverAvailability();
-      if (seq !== availabilityLoadSeq.current) return;
-      setAvailability(value);
-      if (value.status === "online") location.start();
-    } catch (e) {
-      if (seq !== availabilityLoadSeq.current) return;
-      setAvailability(null);
-      setAvailabilityError(e instanceof Error ? e.message : "Could not load your status.");
-    } finally {
-      if (seq === availabilityLoadSeq.current) setAvailabilityLoading(false);
-    }
-  };
-
-  const loadActiveRide = async (keepLoading = false) => {
-    const seq = ++activeRideLoadSeq.current;
-    if (!keepLoading) setActiveLoading(true);
-    try {
-      const ride = await fetchDriverActiveRide();
-      if (seq !== activeRideLoadSeq.current) return;
-      setActiveRide(ride);
-      setActiveError(null);
-    } catch (e) {
-      if (seq !== activeRideLoadSeq.current) return;
-      setActiveError(e instanceof Error ? e.message : "Could not load your active ride.");
-    } finally {
-      if (seq === activeRideLoadSeq.current) setActiveLoading(false);
-    }
-  };
-
-  const loadSummary = async () => {
-    try {
-      const earnings = await fetchDriverEarnings();
-      setSummary(earnings);
-    } catch {
-      setSummary(null);
-    }
-  };
-
-  const loadRating = async (background = false) => {
-    const seq = ++ratingLoadSeq.current;
-    if (!background) setRatingStatus("loading");
-    try {
-      const value = await fetchDriverRating();
-      if (seq !== ratingLoadSeq.current) return;
-      setRating(value);
-      setRatingStatus("success");
-    } catch {
-      if (seq !== ratingLoadSeq.current) return;
-      if (!background) setRating(null);
-      setRatingStatus("error");
-    }
-  };
-
   useEffect(() => {
-    void loadAvailability();
-    void loadActiveRide();
-    void loadSummary();
-    void loadRating();
     // GPS acquisition starts for online dispatch and remains active whenever
     // an accepted ride needs navigation, even if availability changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (availability?.status === "online") startLocation();
+  }, [availability?.status, startLocation]);
 
   // The context bumps rideRefreshKey when the driver accepts a ride mid-session
   // (ride card + nav need the fresh booking state immediately).
-  useEffect(() => {
+useEffect(() => {
     if (rideRefreshKey > 0) {
-      const refresh = setTimeout(() => void loadActiveRide(true), 0);
+      const refresh = setTimeout(() => void refetchActiveRide(), 0);
       return () => clearTimeout(refresh);
     }
-  }, [rideRefreshKey]);
+  }, [rideRefreshKey, refetchActiveRide]);
 
   // Returning to the tab is the moment the ride card most often goes stale
   // (a ride may have been accepted/advanced from another session or tab).
@@ -282,9 +240,9 @@ export default function DriverHome() {
     const refresh = () => {
       if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => {
-        void loadActiveRide(true);
-        void loadSummary();
-        void loadRating(true);
+        void refetchActiveRide();
+        void refetchSummary();
+        void refetchRating();
       }, 0);
     };
     const onVisible = () => {
@@ -293,7 +251,9 @@ export default function DriverHome() {
     const onFocus = () => {
       if (document.visibilityState === "visible") refresh();
     };
-    const ratingInterval = window.setInterval(() => void loadRating(true), 30000);
+    // Existing rating refresh cadence, preserved: the aggregate moves slowly
+    // but a passenger review can land at any time.
+    const ratingInterval = window.setInterval(() => void refetchRating(), 30000);
 
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onFocus);
@@ -303,29 +263,26 @@ export default function DriverHome() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [refetchActiveRide, refetchSummary, refetchRating]);
+
 
   const handleToggleAvailability = async () => {
     const next = availability?.status === "online" ? "offline" : "online";
-    setAvailabilitySubmitting(true);
-    setAvailabilityError(null);
     try {
-      const updated = await setDriverAvailability(next);
-      setAvailability(updated);
+      // The mutation writes the new availability into the cache, so the toggle
+      // reflects the server's answer rather than an optimistic guess.
+      await availabilityMutation.mutateAsync(next);
       if (next === "online") {
         location.start();
         connect();
-        // Emit driver login to socket server with driver ID from auth
-        // The driverId is available from the auth context
-        // We'll get it from the authUser in the driver-api context
       } else if (!activeRide) {
         location.stop();
         disconnect();
       }
     } catch (e) {
-      setAvailabilityError(e instanceof Error ? e.message : "Could not update your status.");
-    } finally {
-      setAvailabilitySubmitting(false);
+      setActionError(
+        e instanceof Error ? e.message : "Could not update your status."
+      );
     }
   };
 
@@ -333,27 +290,22 @@ export default function DriverHome() {
     if (!activeRide) return;
     const action = actionForStatus(activeRide.status);
     if (!action) return;
-    activeRideLoadSeq.current += 1;
-    setActionBusy(true);
     setActionError(null);
     try {
-      const updated = await transitionDriverRide(activeRide._id, action.key);
+      const updated = await transitionMutation.mutateAsync({
+        bookingId: activeRide._id,
+        action: action.key,
+      });
       if (updated.status === "completed") {
-        setActiveRide(null);
         setCompletedRide(updated);
-        void loadSummary();
-        void loadRating(true);
       } else if (updated.status === "cancelled") {
-        setActiveRide(null);
         setCompletedRide(null);
-      } else {
-        setActiveRide(updated);
       }
+      // The mutation has already refreshed the active ride, the ride history and
+      // the earnings, so there is nothing to reload by hand here.
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Could not update the ride.");
-      void loadActiveRide(true);
-    } finally {
-      setActionBusy(false);
+      void refetchActiveRide();
     }
   };
 
@@ -413,7 +365,7 @@ export default function DriverHome() {
                   Could not load your driver status
                 </p>
                 <p className="mt-1 text-[12px] text-muted-foreground">{availabilityError}</p>
-                <Button size="sm" className="mt-4" onClick={() => void loadAvailability()}>
+                <Button size="sm" className="mt-4" onClick={() => void refetchAvailability()}>
                   <RefreshCcw className="h-3.5 w-3.5" />
                   Retry
                 </Button>
@@ -456,10 +408,10 @@ export default function DriverHome() {
                   variant={online ? "destructive" : "default"}
                   className="mt-4 w-full hover:scale-[1.01] motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
                   onClick={() => void handleToggleAvailability()}
-                  disabled={availabilitySubmitting}
+                  disabled={availabilityMutation.isPending}
                 >
                   <Power className="h-4 w-4" />
-                  {availabilitySubmitting
+                  {availabilityMutation.isPending
                     ? "Updating…"
                     : online
                       ? "Go offline"
@@ -525,9 +477,9 @@ export default function DriverHome() {
                     <div className="min-w-0">
                       <p className="text-[13px] font-semibold text-foreground">Driver rating</p>
                       <p className="text-[11.5px] text-muted-foreground">
-                        {ratingStatus === "loading"
+                        {ratingPending
                           ? "Loading rating…"
-                          : ratingStatus === "error"
+                          : ratingFailed
                             ? "Could not load your rating"
                             : rating?.count
                               ? `Based on ${rating.count} ${rating.count === 1 ? "review" : "reviews"}`
@@ -535,17 +487,17 @@ export default function DriverHome() {
                       </p>
                     </div>
                   </div>
-                  {ratingStatus === "error" ? (
+                  {ratingFailed ? (
                       <button
                         type="button"
-                        onClick={() => void loadRating()}
+                        onClick={() => void refetchRating()}
                         className="-mx-1 shrink-0 rounded-md px-1 py-0.5 text-[11.5px] font-semibold text-primary transition-colors hover:bg-primary/10 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                       >
                       Retry
                     </button>
                   ) : (
                     <p className="shrink-0 text-[22px] font-bold leading-none tracking-tight tabular-nums text-foreground">
-                      {ratingStatus === "success" && rating?.average != null ? rating.average.toFixed(1) : "—"}
+                      {ratingLoaded && rating?.average != null ? rating.average.toFixed(1) : "—"}
                       <span className="ml-1 text-[11px] font-medium text-muted-foreground">/ 5</span>
                     </p>
                   )}
@@ -674,10 +626,10 @@ export default function DriverHome() {
                       variant={actionForStatus(activeRide.status)!.variant}
                       size="lg"
                       onClick={() => void handleRideAction()}
-                      disabled={actionBusy}
+                      disabled={transitionMutation.isPending}
                     >
                       <Radio className="h-4 w-4" />
-                      {actionBusy
+                      {transitionMutation.isPending
                         ? "Updating…"
                         : actionForStatus(activeRide.status)!.label}
                     </Button>
