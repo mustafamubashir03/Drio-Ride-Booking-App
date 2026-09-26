@@ -27,10 +27,7 @@ services:
           name: drio-redis
           property: connectionString
       - key: BETTER_AUTH_URL
-        fromService:
-          type: web
-          name: drio-ride-booking-app
-          envVarKey: RENDER_EXTERNAL_URL
+        value: https://drio-ride-booking-app.onrender.com
       - key: BETTER_AUTH_SECRET
         generateValue: true
       - key: TRUSTED_ORIGINS
@@ -99,7 +96,7 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://drio-server.onrender.com/api/*
+        destination: https://drio-main-server.vercel.app/api/*
       - type: rewrite
         source: /*
         destination: /index.html
@@ -107,10 +104,7 @@ services:
       - key: VITE_DEPLOY_ENV
         value: render
       - key: VITE_BETTER_AUTH_URL
-        fromService:
-          type: web
-          name: drio-ride-booking-app
-          envVarKey: RENDER_EXTERNAL_URL
+        value: https://drio-ride-booking-app.onrender.com
       - key: VITE_SOCKET_URL
         fromService:
           type: web
