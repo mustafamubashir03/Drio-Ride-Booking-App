@@ -1729,33 +1729,46 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* User row */}
+        {/* Account control.
+
+            There is exactly ONE account control here. It used to be two: a
+            static avatar/name/email row styled with cursor-pointer stacked
+            above the AccountSwitcher trigger, so the sidebar showed two
+            account-looking buttons and the top one did nothing when clicked.
+
+            AccountSwitcher's own trigger is now the single control: it shows the
+            account, and expanding it reveals the context options with Sign out
+            already inside that menu. The identity row plus Sign out are passed
+            as `children` so they remain the fallback for accounts that have only
+            one context and therefore get no switcher at all. */}
         <div className="border-t border-border px-3 py-3 shrink-0">
-          <div className="flex items-center gap-2.5 rounded-xl px-2 py-2 hover:bg-white/5 transition-colors cursor-pointer">
-            <Avatar size="sm">
-              {user?.image ? <AvatarImage src={user.image} alt="" /> : null}
-              <AvatarFallback className="bg-primary/20 text-[11px] font-bold text-primary">
-                <Initials name={user?.name} email={user?.email} />
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-foreground leading-tight">
-                {user?.name ?? user?.email}
-              </p>
-              <p className="truncate text-[11px] text-muted-foreground">
-                {user?.email}
-              </p>
-            </div>
-          </div>
           <AccountSwitcher>
-            <button
-              onClick={handleSignOut}
-              id="signout-btn"
-              className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[12px] font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-colors"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              Sign out
-            </button>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2.5 rounded-xl px-2 py-2">
+                <Avatar size="sm">
+                  {user?.image ? <AvatarImage src={user.image} alt="" /> : null}
+                  <AvatarFallback className="bg-primary/20 text-[11px] font-bold text-primary">
+                    <Initials name={user?.name} email={user?.email} />
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold text-foreground leading-tight">
+                    {user?.name ?? user?.email}
+                  </p>
+                  <p className="truncate text-[11px] text-muted-foreground">
+                    {user?.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleSignOut}
+                id="signout-btn"
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[12px] font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-colors"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Sign out
+              </button>
+            </div>
           </AccountSwitcher>
         </div>
       </aside>

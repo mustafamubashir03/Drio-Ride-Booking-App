@@ -31,26 +31,19 @@ export type BottomTabItem = {
 };
 
 /**
- * The active tab is marked by an outlined shape with rounded top corners that
- * rises out of the bar, drawn with the Drio accent gradient.
+ * The active tab is marked by a solid accent bar attached to the TOP edge of the
+ * tab, narrow rather than full-width, with rounded bottom corners so it reads as
+ * hanging from the top of the tab rather than floating inside it.
  *
- * The border is a gradient layer masked into a 1.5px outline with a second
- * inner mask punching out the middle, so the bar's own background shows through
- * and the shape reads as connected to the navigation area rather than as a
- * filled pill sitting on top of it. The same treatment is used for every tab, so
- * no per-tab colour variation is possible.
+ * This is a solid shape on purpose: no border on any side, no outline, no pill.
+ * The top corners stay square so the bar is flush with the top of the tab.
  */
-function ActiveTabOutline({ reduced }: { reduced: boolean }) {
+function ActiveTabIndicator({ reduced }: { reduced: boolean }) {
   return (
     <motion.span
-      layoutId="bottom-tabs-active-outline"
+      layoutId="bottom-tabs-active-indicator"
       aria-hidden="true"
-      className={cn(
-        "pointer-events-none absolute inset-x-[7%] top-0 h-[calc(100%-0.55rem)]",
-        "rounded-t-[0.85rem] bg-gradient-to-t from-primary/75 via-primary to-primary/75",
-        "p-px [mask-image:linear-gradient(#000,#000),linear-gradient(#000,#000)]",
-        "[mask-clip:content-box,border-box] [mask-composite:exclude]",
-      )}
+      className="pointer-events-none absolute inset-x-[32%] top-0 h-[6px] rounded-b-lg bg-primary"
       transition={{ duration: reduced ? 0 : 0.22, ease: [0.32, 0.72, 0, 1] }}
     />
   );
@@ -75,7 +68,7 @@ export default function BottomTabs({
 
   const inner = (isActive: boolean, item: BottomTabItem) => (
     <>
-      {isActive && <ActiveTabOutline reduced={reduced} />}
+      {isActive && <ActiveTabIndicator reduced={reduced} />}
       <span className="relative z-10 flex items-center justify-center">
         <item.icon
           strokeWidth={isActive ? 2.2 : 1.9}
