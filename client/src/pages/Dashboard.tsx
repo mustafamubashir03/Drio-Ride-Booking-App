@@ -2176,38 +2176,33 @@ export default function Dashboard() {
               <h1 className="font-serif text-[20px] font-bold tracking-tight text-foreground lg:hidden">
                 My Account
               </h1>
-              {/* Profile card */}
-              <div className="rounded-3xl border border-border bg-card overflow-hidden">
-                {/* Card header band */}
-                <div className="h-20 sm:h-24 bg-gradient-to-br from-primary/20 via-primary/10 to-transparent relative">
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-card/60 to-transparent" />
+              {/* Account bar. This is the account page's own identity header and
+                  is visible at every width, because the previous decorative band
+                  carried no content once the profile row below it was hidden on
+                  desktop, leaving the information with nowhere to render.
+
+                  The avatar is mobile-only: on desktop the fixed sidebar already
+                  shows this same account's photo, name and email, and repeating
+                  the photo here is exactly the duplication to avoid. The name,
+                  email and tier stay visible on desktop as the page's content. */}
+              <div className="flex items-center gap-4 rounded-2xl border border-border bg-card px-4 py-4 sm:px-5">
+                <Avatar className="h-12 w-12 shrink-0 lg:hidden">
+                  {user?.image ? <AvatarImage src={user.image} alt="" /> : null}
+                  <AvatarFallback className="bg-primary/20 text-[15px] font-bold text-primary">
+                    <Initials name={user?.name} email={user?.email} />
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[16px] font-semibold text-foreground">
+                    {user?.name ?? "Drio Member"}
+                  </p>
+                  <p className="truncate text-[12.5px] text-muted-foreground">
+                    {user?.email}
+                  </p>
                 </div>
-                <div className="px-4 pb-5 sm:px-7 sm:pb-6">
-                  {/* Mobile only: on desktop the fixed sidebar already renders
-                      the avatar/name/email row for this account, so showing it
-                      here as well duplicated the profile. */}
-                  <div className="flex items-end gap-3 -mt-7 mb-4 lg:hidden">
-                    <Avatar size="lg" className="ring-4 ring-card h-14 w-14 sm:h-16 sm:w-16">
-                      {user?.image ? (
-                        <AvatarImage src={user.image} alt="" />
-                      ) : null}
-                      <AvatarFallback className="bg-primary/20 text-xl font-bold text-primary">
-                        <Initials name={user?.name} email={user?.email} />
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0 pb-1">
-                      <p className="text-[16px] sm:text-[18px] font-semibold text-foreground truncate">
-                        {user?.name ?? "Drio Member"}
-                      </p>
-                      <p className="text-[12px] text-muted-foreground truncate">
-                        {user?.email}
-                      </p>
-                    </div>
-                    <span className="shrink-0 rounded-full bg-primary/12 border border-primary/20 px-2.5 py-1 text-[10px] font-semibold text-primary">
-                      Premier
-                    </span>
-                  </div>
-                </div>
+                <span className="shrink-0 rounded-full border border-primary/20 bg-primary/12 px-2.5 py-1 text-[10px] font-semibold text-primary">
+                  Premier
+                </span>
               </div>
 
               {/* Settings list */}

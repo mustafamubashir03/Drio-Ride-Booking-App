@@ -145,8 +145,8 @@ export default function Register() {
       title="Join Drio today."
       subtitle="Create your account and start riding in minutes. Your premium experience awaits."
     >
-      <div className="mb-5">
-        <h2 className="font-serif text-[1.65rem] font-bold tracking-tight text-foreground leading-tight">
+      <div className="mb-4">
+        <h2 className="font-serif text-[1.6rem] font-bold tracking-tight text-foreground leading-tight">
           Create your account
         </h2>
         <p className="mt-1 text-[13px] text-muted-foreground">
@@ -166,13 +166,13 @@ export default function Register() {
         {googleLoading ? "Redirecting..." : "Sign up with Google"}
       </Button>
 
-      <div className="my-5 flex items-center gap-3">
+      <div className="my-4 flex items-center gap-3">
         <Separator className="flex-1" />
         <span className="text-[11px] font-medium text-muted-foreground">or continue with email</span>
         <Separator className="flex-1" />
       </div>
 
-      <form onSubmit={handleRegister} className="space-y-5" noValidate>
+      <form onSubmit={handleRegister} className="space-y-4" noValidate>
         {error && (
           <div
             role="alert"
@@ -232,7 +232,7 @@ export default function Register() {
         </Button>
       </form>
 
-      <p className="mt-7 text-center text-[13px] text-muted-foreground">
+      <p className="mt-6 text-center text-[13px] text-muted-foreground">
         Already have an account?{" "}
         <Link
           to="/login"
@@ -242,23 +242,16 @@ export default function Register() {
         </Link>
       </p>
 
-      <div className="mt-6 rounded-xl border border-border bg-muted/40 px-5 py-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[14px] font-semibold text-foreground">
-              Want to join as a driver?
-            </p>
-            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-              You can apply to drive with Drio using this same account.
-            </p>
-          </div>
-          <Link
-            to="/driver/register"
-            className="shrink-0 whitespace-nowrap rounded-md font-semibold text-primary transition-colors duration-150 hover:text-drio-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
-          >
-            Driver Registration
-          </Link>
-        </div>
+      {/* One line, no supporting paragraph: the driver's own portal is reachable
+          from here, but the extra sentence was filler that cost vertical room. */}
+      <div className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+        <p className="text-[13px] text-muted-foreground">Want to drive with Drio?</p>
+        <Link
+          to="/driver/register"
+          className="shrink-0 whitespace-nowrap rounded-md text-[13px] font-semibold text-primary transition-colors duration-150 hover:text-drio-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
+        >
+          Driver Registration
+        </Link>
       </div>
     </AuthLayout>
   );
