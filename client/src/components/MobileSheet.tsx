@@ -97,7 +97,23 @@ export default function MobileSheet({
   const [stop, setStop] = useState<SheetStop>("peek");
   const [isDesktop, setIsDesktop] = useState(false);
   const [uncontrolledCollapsed, setUncontrolledCollapsed] = useState(false);
+  // The three stops are resolved to PIXELS so the spring animates between one
+  // unit only. Mixing a number with an "svh" string is what made the travel
+  // unreliable, and it is also why the height cap below is kept in plain CSS
+  // as the authority rather than left to an animation.
+  const [viewportHeight, setViewportHeight] = useState(0);
   const { reduced, transition } = useMotionSystem();
+
+  useEffect(() => {
+    const sync = () => setViewportHeight(window.innerHeight);
+    sync();
+    window.addEventListener("resize", sync);
+    window.addEventListener("orientationchange", sync);
+    return () => {
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("orientationchange", sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (!desktopClassName) return;
@@ -147,14 +163,17 @@ export default function MobileSheet({
     );
   }
 
-  // The sheet's height is the animated value. Desktop panel mode is left
-  // unconstrained so the card can be as tall as its column layout needs.
-  const targetMaxHeight = panelMode
+  // The sheet's height, in pixels. Desktop panel mode is left unconstrained so
+  // the card can be as tall as its column layout needs.
+  //
+  // Before the first measurement (and on a server render) there is no viewport
+  // to measure, so it falls back to the resting height rather than guessing.
+  const stopHeight = panelMode
     ? undefined
     : stop === "collapsed"
       ? HANDLE_HEIGHT
       : stop === "expanded"
-        ? `${expandedVh}svh`
+        ? Math.round((viewportHeight * expandedVh) / 100) || peekHeight
         : peekHeight;
 
   return (
@@ -164,7 +183,19 @@ export default function MobileSheet({
         desktopClassName,
         className,
       )}
-      style={panelMode ? undefined : { paddingBottom: "env(safe-area-inset-bottom)" }}
+      style={
+        panelMode
+          ? undefined
+          : {
+              // The cap stays in plain CSS and stays the authority. It is what
+              // guarantees the sheet can never exceed the viewport even if the
+              // measured pixel height is generous, and it is correct on a phone
+              // because "svh" excludes the browser chrome that innerHeight
+              // includes.
+              maxHeight: `${expandedVh}svh`,
+              paddingBottom: "env(safe-area-inset-bottom)",
+            }
+      }
     >
       <motion.div
         className={cn(
@@ -174,15 +205,14 @@ export default function MobileSheet({
           // non-collapsible desktop panel is flattened into a bare column.
           desktopClassName &&
             !desktopCollapsible &&
-            "lg:max-h-none lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none",
+            "lg:h-auto lg:max-h-none lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none",
           // The collapsible card is bounded so it can never grow into the map.
           desktopCollapsible &&
-            "lg:max-h-[calc(100%-3rem)] lg:rounded-2xl lg:border lg:border-border/70 lg:bg-background/95 lg:shadow-[0_18px_50px_rgba(0,0,0,0.42)] lg:backdrop-blur-md",
+            "lg:h-auto lg:max-h-[calc(100%-3rem)] lg:rounded-2xl lg:border lg:border-border/70 lg:bg-background/95 lg:shadow-[0_18px_50px_rgba(0,0,0,0.42)] lg:backdrop-blur-md",
         )}
-        // Height is what moves, so the spring carries the whole travel. Duration
-        // transitions on max-height look like the sheet is being dragged by a
-        // rope; a spring settles instead.
-        animate={panelMode ? undefined : { maxHeight: targetMaxHeight }}
+        // Height is the animated value, in pixels at every stop, so the spring
+        // carries the whole travel between consistent units.
+        animate={panelMode ? undefined : { height: stopHeight }}
         initial={false}
         transition={transition.spring}
       >
@@ -285,9 +315,16 @@ export default function MobileSheet({
           }}
           aria-hidden={stop === "collapsed" || undefined}
           className={cn(
+            // Bounded and scrollable at EVERY stop. The card now carries an
+            // explicit pixel height, so a plain flex child with min-h-0 is what
+            // makes the content scroll instead of being clipped away. Previously
+            // this was "flex-1" only when expanded and "shrink-0" otherwise, so
+            // at the smaller stops the element took its full content height and
+            // overflow-y-auto had nothing to scroll: the lower half of the form
+            // was unreachable.
             "overscroll-contain overflow-y-auto px-4 pb-4",
-            desktopClassName ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto" : "min-h-0",
-            expanded ? "flex-1" : "shrink-0",
+            "min-h-0 flex-1",
+            desktopClassName && "lg:overflow-y-auto",
             stop === "collapsed" && "pointer-events-none",
             contentClassName,
           )}
