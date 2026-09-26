@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  fetchDriverRides,
   DRIVER_RIDE_STATUS_LABEL,
   type DriverRide,
 } from "@/lib/driver-api";
+import { useDriverRidesQuery } from "@/hooks/queries/use-driver";
 import {
   formatDate,
   formatDistance,
@@ -42,51 +41,27 @@ function groupRidesByDate(rides: DriverRide[]) {
 }
 
 export default function DriverRides() {
-  const [rides, setRides] = useState<DriverRide[]>([]);
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
-  const requestSeq = useRef(0);
+  const { data, isPending, isError, isSuccess, error, refetch } = useDriverRidesQuery();
+  const rides = data ?? [];
   const { stagger, reduced } = useMotionSystem();
-
-  const load = async () => {
-    const seq = ++requestSeq.current;
-    setStatus("loading");
-    setError(null);
-    try {
-      const list = await fetchDriverRides();
-      if (seq !== requestSeq.current) return;
-      setRides(list);
-      setStatus("success");
-    } catch (e) {
-      if (seq !== requestSeq.current) return;
-      setStatus("error");
-      setError(e instanceof Error ? e.message : "Could not load your rides.");
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    // run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const groups = groupRidesByDate(rides);
 
   return (
     <MotionPage className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto p-4 lg:p-8">
       <div className="mx-auto w-full min-w-0 max-w-3xl space-y-6">
-        {status === "loading" && (
+        {isPending && (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-muted/20 px-6 py-20 text-center">
             <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <History className="h-7 w-7 text-primary animate-pulse motion-reduce:animate-none" />
             </div>
             <p className="text-[15px] font-semibold text-foreground">
-              Loading your rides…
+              Loading your ridesâ€¦
             </p>
           </div>
         )}
 
-        {status === "error" && (
+        {isError && (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-destructive/25 bg-destructive/5 px-6 py-20 text-center">
             <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
               <History className="h-7 w-7 text-destructive" />
@@ -95,15 +70,15 @@ export default function DriverRides() {
               Could not load your rides
             </p>
             <p className="mt-2 max-w-xs text-[13px] leading-relaxed text-muted-foreground">
-              {error ?? "Something went wrong while loading your rides."}
+              {(error instanceof Error ? error.message : null) ?? "Something went wrong while loading your rides."}
             </p>
-            <Button size="sm" className="mt-6 font-semibold" onClick={() => void load()}>
+            <Button size="sm" className="mt-6 font-semibold" onClick={() => void refetch()}>
               Try again
             </Button>
           </div>
         )}
 
-        {status === "success" && groups.length === 0 && (
+        {isSuccess && groups.length === 0 && (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-muted/20 px-6 py-20 text-center">
             <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <Car className="h-7 w-7 text-primary" />
@@ -113,14 +88,14 @@ export default function DriverRides() {
               Once a ride is assigned to you, it will show up here with its live
               status and earnings.
             </p>
-            <Button size="sm" className="mt-6 font-semibold" onClick={() => void load()}>
+            <Button size="sm" className="mt-6 font-semibold" onClick={() => void refetch()}>
               <RefreshCcw className="h-3.5 w-3.5" />
               Refresh
             </Button>
           </div>
         )}
 
-        {status === "success" && groups.length > 0 && (
+        {isSuccess && groups.length > 0 && (
           <motion.div
             className="space-y-6"
             variants={stagger.container}
@@ -171,7 +146,7 @@ export default function DriverRides() {
                             {formatFare(ride.fare)}
                           </p>
                           <p className="mt-0.5 whitespace-nowrap text-[11.5px] text-muted-foreground">
-                            {ride.distance ? formatDistance(ride.distance) : "—"}
+                            {ride.distance ? formatDistance(ride.distance) : "â€”"}
                           </p>
                           <Badge
                             variant="outline"

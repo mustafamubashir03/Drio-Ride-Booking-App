@@ -1,9 +1,6 @@
-import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  fetchDriverEarnings,
-  type DriverEarningsSummary,
-} from "@/lib/driver-api";
+import { type DriverEarningsSummary } from "@/lib/driver-api";
+import { useDriverEarningsQuery } from "@/hooks/queries/use-driver";
 import { formatFare } from "@/lib/format";
 import { Banknote, History, TrendingUp } from "lucide-react";
 import { MotionPage } from "@/motion/MotionPage";
@@ -17,33 +14,9 @@ const DEFAULT_SUMMARY: DriverEarningsSummary = {
 };
 
 export default function DriverEarnings() {
-  const [earnings, setEarnings] = useState<DriverEarningsSummary>(DEFAULT_SUMMARY);
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
-  const requestSeq = useRef(0);
+  const { data, isPending, isError, isSuccess, error, refetch } = useDriverEarningsQuery();
+  const earnings = data ?? DEFAULT_SUMMARY;
   const { stagger, reduced } = useMotionSystem();
-
-  const load = async () => {
-    const seq = ++requestSeq.current;
-    setStatus("loading");
-    setError(null);
-    try {
-      const value = await fetchDriverEarnings();
-      if (seq !== requestSeq.current) return;
-      setEarnings(value);
-      setStatus("success");
-    } catch (e) {
-      if (seq !== requestSeq.current) return;
-      setStatus("error");
-      setError(e instanceof Error ? e.message : "Could not load your earnings.");
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    // run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const cards = [
     {
@@ -72,7 +45,7 @@ export default function DriverEarnings() {
   return (
     <MotionPage className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto p-4 lg:p-8">
       <div className="mx-auto w-full min-w-0 max-w-3xl space-y-6">
-        {status === "error" && (
+        {isError && (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-destructive/25 bg-destructive/5 px-6 py-16 text-center">
             <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
               <Banknote className="h-7 w-7 text-destructive" />
@@ -81,22 +54,22 @@ export default function DriverEarnings() {
               Could not load your earnings
             </p>
             <p className="mt-2 max-w-xs text-[13px] leading-relaxed text-muted-foreground">
-              {error ?? "Something went wrong while loading your earnings."}
+              {(error instanceof Error ? error.message : null) ?? "Something went wrong while loading your earnings."}
             </p>
-            <Button size="sm" className="mt-6 font-semibold" onClick={() => void load()}>
+            <Button size="sm" className="mt-6 font-semibold" onClick={() => void refetch()}>
               Try again
             </Button>
           </div>
         )}
 
-        {status === "loading" && (
+        {isPending && (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center">
             <Banknote className="h-7 w-7 animate-pulse text-primary motion-reduce:animate-none" />
-            <p className="mt-4 text-[15px] font-semibold text-foreground">Loading your earnings…</p>
+            <p className="mt-4 text-[15px] font-semibold text-foreground">Loading your earningsâ€¦</p>
           </div>
         )}
 
-        {status === "success" && (
+        {isSuccess && (
           <>
             <motion.div
               className="grid gap-4 sm:grid-cols-3"
