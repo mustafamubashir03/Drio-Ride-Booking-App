@@ -1,73 +1,53 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type PointerEvent as ReactPointerEvent,
-  type Ref,
-} from "react";
+import { useEffect, useState, type ReactNode, type Ref } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { ChevronUp } from "lucide-react";
+import { useMotionSystem } from "@/motion/use-motion";
 import { cn } from "@/lib/utils";
 
 /**
- * Mobile drag-to-expand bottom sheet.
+ * Mobile bottom sheet with a single, explicit open/close control.
  *
- * Presentation only: it owns no data, calls no APIs and renders whatever it is
- * given. Desktop is left to the caller, which keeps its existing side-panel
- * layout and simply does not mount this.
+ * Deliberately has NO drag/swipe gesture. The previous implementation tracked
+ * pointer velocity and snapped to the nearest stop, which in practice fought
+ * scrolling, could not be reliably dismissed, and on the passenger side expanded
+ * to the top with no dependable way back down. Reliability beat the gesture, so
+ * the gesture is gone rather than retuned.
  *
- * The sheet rests with `peekHeight` of itself visible, so the map behind it
- * stays in view. Dragging the handle (or tapping it) snaps between the peek and
- * the expanded height, which is capped so the map is never fully covered.
+ * The sheet only ever moves between two fixed positions, and only ever in
+ * response to the chevron button. No effect, map update, location change or
+ * route change can move it, so the map camera stays independent of the sheet.
  */
 export default function MobileSheet({
   children,
-  /** Visible height of the sheet at rest. The rest of it slides below the fold. */
+  /** Visible height at rest, so the map behind stays in view. */
   peekHeight = 200,
   /** Expanded height as a share of the viewport. */
   expandedVh = 78,
-  /** Label announced for the drag handle. */
-  label = "Expand or collapse",
+  label = "Show more",
+  expandedLabel = "Show less",
   className,
   contentClassName,
-  /** Ref for the scrollable body, so callers can keep reveal-on-focus. */
   contentRef,
-  /** Fired when a field inside the sheet takes focus. */
   onFieldFocus,
-  /** Rendered instead of the default collapsed hint. */
   peekHint,
-  /**
-   * When set, the sheet becomes a plain static side panel at `lg` and up, using
-   * these classes. That lets a caller keep ONE content tree for both
-   * breakpoints instead of rendering it twice, which would double-fire any
-   * effects inside it.
-   */
+  /** At `lg` the same DOM becomes a static side panel via these classes. */
   desktopClassName,
-  /** Fired when the sheet settles in either position. */
-  onExpandedChange,
 }: {
   children: ReactNode;
   peekHeight?: number;
   expandedVh?: number;
   label?: string;
+  expandedLabel?: string;
   className?: string;
   contentClassName?: string;
   contentRef?: Ref<HTMLDivElement>;
   onFieldFocus?: (field: HTMLElement) => void;
   peekHint?: ReactNode;
   desktopClassName?: string;
-  onExpandedChange?: (expanded: boolean) => void;
 }) {
-  const sheetRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  // Below `lg` this is a floating sheet; at `lg` and up (when a
-  // desktopClassName is supplied) the same DOM becomes a static side panel, so
-  // the inline transform must be dropped.
   const [isDesktop, setIsDesktop] = useState(false);
-  const dragState = useRef<{ startY: number; startOffset: number; lastY: number; lastT: number; velocity: number } | null>(null);
+  const { reduced } = useMotionSystem();
 
   useEffect(() => {
     if (!desktopClassName) return;
@@ -80,106 +60,6 @@ export default function MobileSheet({
 
   const panelMode = Boolean(desktopClassName) && isDesktop;
 
-  // Distance the sheet can travel: everything above the peek height.
-  const [travel, setTravel] = useState(0);
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      const el = sheetRef.current;
-      if (!el) return;
-      setTravel(Math.max(0, el.offsetHeight - peekHeight));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (sheetRef.current) ro.observe(sheetRef.current);
-    return () => ro.disconnect();
-  }, [peekHeight, children]);
-
-  // The expanded height is viewport-relative, so it must be recomputed on
-  // rotate/resize rather than baked into a class.
-  useEffect(() => {
-    const onResize = () => {
-      const el = sheetRef.current;
-      if (el) setTravel(Math.max(0, el.offsetHeight - peekHeight));
-    };
-    window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("orientationchange", onResize);
-    };
-  }, [peekHeight]);
-
-  const settle = useCallback(
-    (next: boolean) => {
-      setExpanded(next);
-      setDragOffset(0);
-      onExpandedChange?.(next);
-    },
-    [onExpandedChange],
-  );
-
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "mouse") return; // mouse users get click-to-toggle
-    event.currentTarget.setPointerCapture(event.pointerId);
-    dragState.current = {
-      startY: event.clientY,
-      startOffset: dragOffset,
-      lastY: event.clientY,
-      lastT: event.timeStamp,
-      velocity: 0,
-    };
-    setDragging(true);
-  };
-
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const st = dragState.current;
-    if (!st) return;
-    const delta = event.clientY - st.startY;
-    // Dragging up expands, dragging down collapses. Clamp so the sheet can
-    // never be dragged past either end.
-    const raw = st.startOffset + delta;
-    const min = -travel;
-    const next = Math.min(0, Math.max(min, raw));
-    const dt = event.timeStamp - st.lastT;
-    if (dt > 0) st.velocity = (event.clientY - st.lastY) / dt;
-    st.lastY = event.clientY;
-    st.lastT = event.timeStamp;
-    setDragOffset(next);
-  };
-
-  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const st = dragState.current;
-    dragState.current = null;
-    setDragging(false);
-    if (!st) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    // Flick wins over distance: a fast short flick should still change state.
-    const flung = Math.abs(st.velocity) > 0.45;
-    const pastMidpoint = dragOffset < -travel / 2;
-    if (flung) settle(st.velocity < 0);
-    else settle(pastMidpoint);
-  };
-
-  const onHandleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      settle(!expanded);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      settle(true);
-    } else if (event.key === "ArrowDown") {
-      event.preventDefault();
-      settle(false);
-    } else if (event.key === "Escape") {
-      settle(false);
-    }
-  };
-
-  const shift = expanded ? -travel : 0;
-
   return (
     <div
       className={cn(
@@ -190,82 +70,89 @@ export default function MobileSheet({
       style={panelMode ? undefined : { paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div
-        ref={sheetRef}
         className={cn(
           "pointer-events-auto flex flex-col overflow-hidden rounded-t-3xl border-x border-t border-border bg-card shadow-[0_-8px_32px_rgba(0,0,0,0.45)]",
           desktopClassName &&
             "lg:max-h-none lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none",
-          dragging ? "" : "transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
         )}
-        style={
-          panelMode
-            ? undefined
-            : {
-                maxHeight: `${expandedVh}svh`,
-                transform: `translate3d(0, ${shift + dragOffset}px, 0)`,
-              }
-        }
+        style={panelMode ? undefined : { maxHeight: `${expandedVh}svh` }}
       >
-        {/* Drag handle doubles as the expand/collapse control. */}
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label={label}
+        {/* The one and only control. Fixed hit area, so it is always reachable
+            and always does exactly one thing. */}
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onClick={() => {
-            if (dragState.current === null && !dragging) settle(!expanded);
-          }}
-          onKeyDown={onHandleKeyDown}
+          aria-label={expanded ? expandedLabel : label}
           className={cn(
-            "shrink-0 cursor-grab touch-none select-none px-4 pb-2 pt-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 active:cursor-grabbing",
+            "flex w-full shrink-0 items-center justify-center gap-1.5 px-4 pb-2 pt-3",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50",
             desktopClassName && "lg:hidden",
           )}
         >
-          <div className="mx-auto h-1.5 w-11 rounded-full bg-muted-foreground/35" />
-        </div>
+          <span className="h-1.5 w-11 shrink-0 rounded-full bg-muted-foreground/35" aria-hidden="true" />
+          <ChevronUp
+            className={cn(
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+              expanded ? "rotate-180" : "rotate-0",
+            )}
+            aria-hidden="true"
+          />
+        </button>
 
-        {/* Collapsed: show a hint of what is below the fold. */}
-        <div
-          className={cn(
-            "shrink-0 overflow-hidden px-4 pb-2 transition-opacity duration-200",
-            desktopClassName && "lg:hidden",
+        {/* Collapsed: a hint of what is below the fold. Fades rather than
+            collapsing abruptly, so the change of state is legible. */}
+        <AnimatePresence initial={false}>
+          {!expanded && (
+            <motion.div
+              key="peek-hint"
+              initial={reduced ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={reduced ? undefined : { opacity: 0 }}
+              transition={{ duration: reduced ? 0 : 0.15, ease: "easeOut" }}
+              className={cn(
+                "shrink-0 overflow-hidden px-4 pb-2",
+                desktopClassName && "lg:hidden",
+              )}
+            >
+              {peekHint ?? (
+                <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+                  Tap to expand
+                </p>
+              )}
+            </motion.div>
           )}
-          style={{ opacity: expanded ? 0 : 1, height: expanded ? 0 : undefined }}
-          aria-hidden={expanded}
-        >
-          {peekHint ?? <SheetPeekHint />}
-        </div>
+        </AnimatePresence>
 
+        {/* Collapsed: the sheet is clipped to its peek height. Expanded: the
+            body scrolls normally. */}
         <div
           ref={contentRef}
           onFocusCapture={(event) => {
             const field = event.target;
             if (field instanceof HTMLElement && field.matches("input, textarea")) {
+              // Tapping a field is a deliberate user action, so expanding here is
+              // expected rather than surprising. It also guarantees a focused
+              // input is never left clipped inside the collapsed peek.
+              setExpanded(true);
               onFieldFocus?.(field);
             }
           }}
           className={cn(
-            "min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 pb-4",
-            desktopClassName && "lg:overflow-y-auto lg:overscroll-contain",
+            "overscroll-contain overflow-y-auto px-4 pb-4",
+            desktopClassName ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto" : "min-h-0",
+            expanded ? "flex-1" : "shrink-0",
             contentClassName,
           )}
+          style={
+            panelMode || expanded
+              ? undefined
+              : { maxHeight: peekHeight, overflowY: "hidden" }
+          }
         >
           {children}
         </div>
       </div>
     </div>
-  );
-}
-
-/** Default collapsed hint. Callers can hide it with MobileSheet's own slots. */
-function SheetPeekHint() {
-  return (
-    <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
-      Drag up for details
-    </p>
   );
 }

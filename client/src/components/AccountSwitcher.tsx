@@ -271,9 +271,10 @@ export function AccountSwitcher({
             <span className="max-w-[5.5rem] truncate text-[12px] font-semibold text-foreground">
               {displayName}
             </span>
-            <span className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-              {live && <span className="h-1.5 w-1.5 rounded-full bg-drio-success" aria-hidden="true" />}
-              <span className="truncate">{contextLabel}</span>
+            {/* Live state is shown once, on the avatar corner dot above. Repeating
+                it here as a second dot was redundant. */}
+            <span className="mt-0.5 truncate text-[10px] font-medium text-muted-foreground">
+              {contextLabel}
             </span>
           </span>
         ) : (

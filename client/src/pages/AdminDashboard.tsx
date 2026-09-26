@@ -542,7 +542,7 @@ export default function AdminDashboard() {
         {/* Mobile header */}
         <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
           <div className="flex min-w-0 items-center gap-2.5">
-            <Logo className="!text-[1.15rem]" />
+          <Logo className="!text-[1.5rem]" />
             <h1 className="truncate text-[14px] font-semibold text-foreground">
               Admin Dashboard
             </h1>

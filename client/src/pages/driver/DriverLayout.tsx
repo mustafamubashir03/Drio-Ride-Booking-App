@@ -13,45 +13,19 @@ import { useDriverSocket } from "@/hooks/use-driver-socket";
 import { IncomingRideRequest } from "@/components/driver/IncomingRideRequest";
 import { ensureDriverAvailability, useConfirmBookingMutation } from "@/hooks/queries/use-driver";
 import { queryKeys } from "@/lib/query-keys";
+import BottomTabs, { type BottomTabItem } from "@/components/BottomTabs";
 
-const navItems: Array<{
-  to: string;
-  end?: boolean;
-  label: string;
-  icon: typeof Home;
-  accent: "primary" | "blue" | "green" | "violet";
-}> = [
-  { to: "/driver/dashboard", end: true, label: "Home", icon: Home, accent: "primary" },
-  { to: "/driver/dashboard/rides", label: "Rides", icon: Navigation, accent: "blue" },
-  { to: "/driver/dashboard/earnings", label: "Earnings", icon: Banknote, accent: "green" },
-  { to: "/driver/dashboard/profile", label: "Profile", icon: UserIcon, accent: "violet" },
+/**
+ * Driver destinations only. Rendering, sizing and the active treatment all come
+ * from the shared BottomTabs, so this bar is visually identical to the
+ * passenger bar; the earlier per-tab accent colours are gone.
+ */
+const navItems: BottomTabItem[] = [
+  { key: "home", href: "/driver/dashboard", end: true, label: "Home", icon: Home },
+  { key: "rides", href: "/driver/dashboard/rides", label: "Rides", icon: Navigation },
+  { key: "earnings", href: "/driver/dashboard/earnings", label: "Earnings", icon: Banknote },
+  { key: "profile", href: "/driver/dashboard/profile", label: "Profile", icon: UserIcon },
 ];
-
-const navAccentStyles: Record<
-  (typeof navItems)[number]["accent"],
-  { button: string; chip: string; ident: string }
-> = {
-  primary: {
-    button: "bg-primary/12 text-primary",
-    chip: "bg-primary/15 text-primary",
-    ident: "bg-primary",
-  },
-  blue: {
-    button: "bg-drio-blue/12 text-drio-blue",
-    chip: "bg-drio-blue/15 text-drio-blue",
-    ident: "bg-drio-blue",
-  },
-  green: {
-    button: "bg-drio-success/12 text-drio-success",
-    chip: "bg-drio-success/15 text-drio-success",
-    ident: "bg-drio-success",
-  },
-  violet: {
-    button: "bg-drio-violet/12 text-drio-violet",
-    chip: "bg-drio-violet/15 text-drio-violet",
-    ident: "bg-drio-violet",
-  },
-};
 
 const TITLES: Record<string, string> = {
   "": "Driver Home",
@@ -241,17 +215,16 @@ export default function DriverLayout() {
         <nav className="flex-1 space-y-0.5 px-3 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const accent = navAccentStyles[item.accent];
             return (
               <NavLink
-                key={item.to}
-                to={item.to}
+                key={item.key}
+                to={item.href!}
                 end={item.end}
                 className={({ isActive }) =>
                   cn(
                     "group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition-all duration-150",
                     isActive
-                      ? accent.button
+                      ? "bg-primary/12 text-primary"
                       : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
                   )
                 }
@@ -262,7 +235,7 @@ export default function DriverLayout() {
                       className={cn(
                         "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
                         isActive
-                          ? accent.chip
+                          ? "bg-primary/15 text-primary"
                           : "bg-white/5 text-muted-foreground group-hover:text-foreground"
                       )}
                     >
@@ -272,7 +245,7 @@ export default function DriverLayout() {
                     {isActive && (
                       <motion.span
                         layoutId="driver-nav-active"
-                        className={cn("ml-auto h-1.5 w-1.5 rounded-full", accent.ident)}
+                        className="ml-auto h-1.5 w-1.5 rounded-full bg-primary"
                         transition={{
                           duration: reduced ? 0 : 0.18,
                           ease: "easeOut",
@@ -334,25 +307,28 @@ export default function DriverLayout() {
           </span>
         </header>
 
-        {/* Mobile header */}
+        {/* Mobile header. The brand leads; each page renders its own title in
+            its content, so the bar never crams logo and heading together. */}
         <header className="relative z-[60] flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur lg:hidden">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <Logo className="!text-[1.15rem]" />
-            <h1 className="truncate text-[14px] font-semibold text-foreground">
-              {pageTitleFor(location.pathname)}
-            </h1>
-          </div>
+          <Logo className="!text-[1.5rem]" />
           <div className="flex items-center gap-2">
             {/* `connected` is the driver's existing realtime signal; the
-                switcher renders it as a subtle live dot plus context label, so
-                the old solid "● Driver" badge is no longer needed. */}
+                switcher renders it as a subtle live dot on the avatar. */}
             <AccountSwitcher compact placement="bottom" live={connected}>
               <span />
             </AccountSwitcher>
           </div>
         </header>
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(60px+env(safe-area-inset-bottom))] lg:pb-0">
+        {/* Page title, below the brand bar. lg:hidden because the desktop
+            sidebar and desktop header already carry the title. */}
+        <div className="shrink-0 px-4 pt-4 lg:hidden">
+          <h1 className="font-serif text-[20px] font-bold tracking-tight text-foreground">
+            {pageTitleFor(location.pathname)}
+          </h1>
+        </div>
+
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(4.25rem+max(0.75rem,env(safe-area-inset-bottom)))] lg:pb-0">
           {incomingRide ? (
             <div className="contents lg:block lg:shrink-0 lg:p-4">
               <IncomingRideRequest
@@ -378,63 +354,9 @@ export default function DriverLayout() {
           />
         </main>
 
-        {/* Mobile bottom nav */}
-        <nav
-          className="fixed inset-x-0 bottom-0 z-40 w-screen lg:hidden"
-          aria-label="Driver navigation"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        >
-          {/* Blur backdrop */}
-          <div className="absolute inset-0 bg-sidebar/90 backdrop-blur-xl border-t border-border" />
-
-          <div className="relative flex h-[60px] items-stretch">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const accent = navAccentStyles[item.accent];
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  className="relative flex flex-1 flex-col items-center justify-center gap-[3px] transition-colors duration-150 motion-safe:active:scale-[0.98] motion-reduce:transition-none"
-                >
-                  {({ isActive }) => (
-                    <>
-                      {isActive && (
-                        <motion.span
-                          layoutId="driver-nav-pill"
-                          className={cn("absolute inset-x-[20%] top-[6px] h-[32px] rounded-xl", {
-                            "bg-primary/10": item.accent === "primary",
-                            "bg-drio-blue/10": item.accent === "blue",
-                            "bg-drio-success/10": item.accent === "green",
-                            "bg-drio-violet/10": item.accent === "violet",
-                          })}
-                           transition={{ duration: reduced ? 0 : 0.2, ease: "easeOut" }}
-                        />
-                      )}
-                      <span className="relative z-10 flex items-center justify-center">
-                        <Icon
-                          className={cn("h-[18px] w-[18px] transition-colors duration-150", {
-                            [accent.chip.replace("bg-", "text-").split(" ")[0] + " " + accent.button.split(" ")[1]]: isActive,
-                            "text-muted-foreground": !isActive,
-                          })}
-                        />
-                      </span>
-                      <span
-                        className={cn(
-                          "relative z-10 text-[10px] font-semibold tracking-wide leading-none transition-colors duration-150",
-                          isActive ? accent.button.split(" ")[1] : "text-muted-foreground/70"
-                        )}
-                      >
-                        {item.label}
-                      </span>
-                    </>
-                  )}
-                </NavLink>
-              );
-            })}
-          </div>
-        </nav>
+        {/* Mobile bottom nav — shared component, same design language as the
+            passenger bar. */}
+        <BottomTabs items={navItems} ariaLabel="Driver navigation" />
       </div>
 
     </div>

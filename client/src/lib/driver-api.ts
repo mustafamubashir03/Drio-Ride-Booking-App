@@ -223,9 +223,26 @@ export type DriverRide = {
 };
 
 export type DriverEarningsSummary = {
-    today: { rides: number; total: number };
-    week: { rides: number; total: number };
-    all: { rides: number; total: number };
+  today: { rides: number; total: number };
+  week: { rides: number; total: number };
+  all: { rides: number; total: number };
+};
+
+export type EarningsRangeDays = 7 | 30 | 90;
+
+export type DriverEarningsPoint = {
+  /** UTC day start, ISO-8601. */
+  date: string;
+  rides: number;
+  total: number;
+};
+
+export type DriverEarningsSeries = {
+  days: EarningsRangeDays;
+  currency: string;
+  total: number;
+  rides: number;
+  points: DriverEarningsPoint[];
 };
 
 export const DRIVER_RIDE_STATUS_LABEL: Record<BookingStatus, string> = {
@@ -370,8 +387,7 @@ export async function fetchDriverRating(): Promise<DriverRatingSummary> {
     return data.rating;
 }
 
-export async function fetchDriverEarnings(): Promise<DriverEarningsSummary> {
-    const response = await apiFetch("/api/v1/driver/earnings");
+export async function fetchDriverEarnings(): Promise<DriverEarningsSummary> {    const response = await apiFetch("/api/v1/driver/earnings");
     const data = (await response.json()) as {
         success?: boolean;
         earnings?: DriverEarningsSummary;
@@ -381,4 +397,22 @@ export async function fetchDriverEarnings(): Promise<DriverEarningsSummary> {
         throw new Error(data.message ?? "Could not load your earnings");
     }
     return data.earnings;
+}
+
+/** Read-only daily earnings series, scoped server-side to the caller. */
+export async function fetchDriverEarningsSeries(
+  days: EarningsRangeDays,
+): Promise<DriverEarningsSeries> {
+  const response = await apiFetch(
+    `/api/v1/driver/earnings/series?days=${days}`,
+  );
+  const data = (await response.json()) as {
+    success?: boolean;
+    series?: DriverEarningsSeries;
+    message?: string;
+  };
+  if (!response.ok || !data.success || !data.series) {
+    throw new Error(data.message ?? "Could not load your earnings trend");
+  }
+  return data.series;
 }

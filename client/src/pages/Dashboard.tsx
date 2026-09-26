@@ -1776,16 +1776,12 @@ export default function Dashboard() {
           </header>
         )}
 
-        {/* Top bar (mobile) — hidden on Home tab; map has floating logo instead */}
+        {/* Top bar (mobile) — hidden on Home tab; map has floating logo instead.
+            The brand leads the bar; the page title lives in the page content
+            below, so the header never spends horizontal room on both. */}
         {activeTab !== "home" && (
           <header className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur max-lg:pl-[calc(1rem+env(safe-area-inset-left))] max-lg:pr-[calc(1rem+env(safe-area-inset-right))] [@media(max-height:600px)]:h-[calc(3rem+env(safe-area-inset-top))] lg:hidden">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <Logo className="!text-[1.15rem]" />
-              <h1 className="truncate text-[14px] font-semibold text-foreground">
-                {activeTab === "history" && "Ride History"}
-                {activeTab === "account" && "My Account"}
-              </h1>
-            </div>
+            <Logo className="!text-[1.5rem]" />
             <div className="flex items-center gap-2">
               <AccountSwitcher compact placement="bottom">
                 <span />
@@ -1798,7 +1794,7 @@ export default function Dashboard() {
         {activeTab === "home" && (
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row lg:overflow-hidden">
             <div className="flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center justify-between border-b border-border bg-background px-4 pt-[env(safe-area-inset-top)] max-lg:pl-[calc(1rem+env(safe-area-inset-left))] max-lg:pr-[calc(1rem+env(safe-area-inset-right))] [@media(max-height:600px)]:h-[calc(3rem+env(safe-area-inset-top))] lg:hidden">
-              <Logo className="!text-[1.15rem]" />
+              <Logo className="!text-[1.5rem]" />
               <div className="flex items-center gap-1.5">
                 <AccountSwitcher compact placement="bottom">
                   <span />
@@ -1883,6 +1879,10 @@ export default function Dashboard() {
               }}
             >
               <div className="mx-auto w-full min-w-0 max-w-3xl space-y-4 lg:space-y-6">
+                {/* Page title now lives in the content, below the brand bar. */}
+                <h1 className="font-serif text-[20px] font-bold tracking-tight text-foreground lg:hidden">
+                  Ride History
+                </h1>
                 <AnimatePresence mode="wait">
                   {historyFailed ? (
                     <motion.div
@@ -2165,6 +2165,10 @@ export default function Dashboard() {
         {activeTab === "account" && (
           <div className="flex flex-1 flex-col overflow-y-auto p-4 lg:p-8">
             <div className="w-full max-w-2xl mx-auto space-y-4">
+              {/* Page title now lives in the content, below the brand bar. */}
+              <h1 className="font-serif text-[20px] font-bold tracking-tight text-foreground lg:hidden">
+                My Account
+              </h1>
               {/* Profile card */}
               <div className="rounded-3xl border border-border bg-card overflow-hidden">
                 {/* Card header band */}

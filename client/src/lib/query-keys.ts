@@ -35,5 +35,7 @@ export const queryKeys = {
     ride: (bookingId: string) => [...queryKeys.driver.all, "ride", bookingId] as const,
     rating: () => [...queryKeys.driver.all, "rating"] as const,
     earnings: () => [...queryKeys.driver.all, "earnings"] as const,
+    earningsSeries: (days: number) =>
+      [...queryKeys.driver.all, "earnings-series", days] as const,
   },
 } as const;

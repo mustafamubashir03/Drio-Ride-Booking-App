@@ -96,14 +96,18 @@ export default function DriverProfile() {
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-card/60 to-transparent" />
           </div>
           <div className="px-7 pb-7">
-            <div className="flex items-end gap-5 -mt-8 mb-6">
-              <Avatar size="lg" className="ring-4 ring-card h-16 w-16">
+            {/* items-center + flex-wrap aligns the avatar, the name block and
+                the role badge on one shared centre line. The previous
+                items-end with -mt-8 plus ad-hoc pb-1 offsets left the avatar
+                sitting low and the badge off the text baseline. */}
+            <div className="-mb-6 -mt-8 flex flex-wrap items-center gap-4 sm:gap-5">
+              <Avatar size="lg" className="h-16 w-16 shrink-0 ring-4 ring-card">
                 {user?.image ? <AvatarImage src={user.image} alt="" /> : null}
                 <AvatarFallback className="bg-primary/20 text-2xl font-bold text-primary">
                   {Initials(user?.name, user?.email)}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0 flex-1 pb-1">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-[16px] font-semibold text-foreground sm:text-[18px]">
                   {user?.name ?? "Drio Driver"}
                 </p>
@@ -132,8 +136,8 @@ export default function DriverProfile() {
                   )}
                 </p>
               </div>
-              <div className="shrink-0 pb-1">
-                <span className="rounded-full bg-primary/12 border border-primary/20 px-2.5 py-1.5 text-[10px] font-semibold text-primary sm:px-3.5 sm:text-[11px]">
+              <div className="shrink-0">
+                <span className="rounded-full border border-primary/20 bg-primary/12 px-2.5 py-1.5 text-[10px] font-semibold text-primary sm:px-3.5 sm:text-[11px]">
                   Driver
                 </span>
               </div>

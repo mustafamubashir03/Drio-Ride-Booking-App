@@ -1,5 +1,7 @@
+import { AnimatePresence, motion } from "motion/react";
 import { Loader2, LocateFixed, MapPin, ShieldAlert, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useMotionSystem } from "@/motion/use-motion";
 import { cn } from "@/lib/utils";
 
 /**
@@ -82,6 +84,7 @@ export default function LocationPermission({
 }) {
   const { title, body, icon: Icon, tone, showAction } = COPY[state];
   const spinning = state === "loading";
+  const { reduced } = useMotionSystem();
 
   return (
     <div
@@ -99,24 +102,39 @@ export default function LocationPermission({
         <Icon className={cn("h-4 w-4", spinning && "animate-spin")} aria-hidden="true" />
       </span>
 
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold leading-tight text-foreground">{title}</p>
-        {!compact && (
-          <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{body}</p>
-        )}
+      {/* Cross-fade on state change so moving from loading to granted (or to
+          denied) reads as a transition instead of a jump. */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={state}
+          initial={reduced ? false : { opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduced ? undefined : { opacity: 0, y: -4 }}
+          transition={{ duration: reduced ? 0 : 0.18, ease: "easeOut" }}
+          className="min-w-0 flex-1"
+        >
+          <p className="text-[13px] font-semibold leading-tight text-foreground">
+            {title}
+          </p>
+          {!compact && (
+            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+              {body}
+            </p>
+          )}
 
-        {showAction && onRequest && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={onRequest}
-            className="mt-2.5 h-8 rounded-lg px-3 text-[12px] font-semibold"
-          >
-            {state === "unavailable" ? "Try again" : "Allow location"}
-          </Button>
-        )}
-      </div>
+          {showAction && onRequest && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={onRequest}
+              className="mt-2.5 h-8 rounded-lg px-3 text-[12px] font-semibold"
+            >
+              {state === "unavailable" ? "Try again" : "Allow location"}
+            </Button>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

@@ -73,22 +73,25 @@
   --background: #282828;
   --foreground: #e6e6e6;
 
-  --card: #3b3b3b;
+  /* Surfaces are deliberately DARKER than --background so a card reads as a
+     distinct, slightly recessed panel against the page rather than blending
+     into it. Kept close in value to avoid crushing the text hierarchy. */
+  --card: #212121;
   --card-foreground: #e6e6e6;
 
-  --popover: #3b3b3b;
+  --popover: #242424;
   --popover-foreground: #e6e6e6;
 
   --primary: #e5bd97;
   --primary-foreground: #282828;
 
-  --secondary: #3b3b3b;
+  --secondary: #2a2a2a;
   --secondary-foreground: #e6e6e6;
 
-  --muted: #333333;
+  --muted: #2f2f2f;
   --muted-foreground: #b2b2b2;
 
-  --accent: #3b3b3b;
+  --accent: #2a2a2a;
   --accent-foreground: #e6e6e6;
 
   --destructive: #f87171;

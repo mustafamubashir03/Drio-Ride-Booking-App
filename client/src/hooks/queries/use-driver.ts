@@ -5,6 +5,7 @@ import {
   fetchDriverActiveRide,
   fetchDriverAvailability,
   fetchDriverEarnings,
+  fetchDriverEarningsSeries,
   fetchDriverRating,
   fetchDriverRide,
   fetchDriverRides,
@@ -17,6 +18,7 @@ import {
   type DriverAvailability,
   type DriverAvailabilityStatus,
   type DriverDocumentType,
+  type EarningsRangeDays,
   type DriverRide,
   type DriverRideAction,
 } from "@/lib/driver-api";
@@ -195,5 +197,14 @@ export function useDriverEarningsQuery() {
   return useQuery({
     queryKey: queryKeys.driver.earnings(),
     queryFn: fetchDriverEarnings,
+  });
+}
+
+/** Daily earnings series for the earnings chart. Keyed by range so switching
+ *  period is instant once cached. */
+export function useDriverEarningsSeriesQuery(days: EarningsRangeDays) {
+  return useQuery({
+    queryKey: queryKeys.driver.earningsSeries(days),
+    queryFn: () => fetchDriverEarningsSeries(days),
   });
 }

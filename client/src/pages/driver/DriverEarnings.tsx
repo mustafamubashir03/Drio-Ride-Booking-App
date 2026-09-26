@@ -1,11 +1,33 @@
+import { Suspense, lazy, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { type DriverEarningsSummary } from "@/lib/driver-api";
-import { useDriverEarningsQuery } from "@/hooks/queries/use-driver";
+import { type DriverEarningsSummary, type EarningsRangeDays } from "@/lib/driver-api";
+import {
+  useDriverEarningsQuery,
+  useDriverEarningsSeriesQuery,
+} from "@/hooks/queries/use-driver";
 import { formatFare } from "@/lib/format";
 import { Banknote, History, TrendingUp } from "lucide-react";
 import { MotionPage } from "@/motion/MotionPage";
 import { motion } from "motion/react";
 import { useMotionSystem } from "@/motion/use-motion";
+import { cn } from "@/lib/utils";
+
+/**
+ * Recharts is a large dependency and only the driver earnings page needs it.
+ * Lazy-loading keeps it out of the bundle every passenger downloads.
+ */
+const EarningsChart = lazy(() => import("@/components/driver/EarningsChart"));
+
+/** Matches the chart card's own skeleton so the swap does not reflow. */
+function ChartSkeleton() {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4" aria-busy="true">
+      <div className="h-3 w-28 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+      <div className="mt-3 h-7 w-36 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+      <div className="mt-5 h-40 w-full animate-pulse rounded-xl bg-muted/60 motion-reduce:animate-none sm:h-48" />
+    </div>
+  );
+}
 
 const DEFAULT_SUMMARY: DriverEarningsSummary = {
   today: { rides: 0, total: 0 },
@@ -13,8 +35,16 @@ const DEFAULT_SUMMARY: DriverEarningsSummary = {
   all: { rides: 0, total: 0 },
 };
 
+const RANGES: { value: EarningsRangeDays; label: string }[] = [
+  { value: 7, label: "7 days" },
+  { value: 30, label: "30 days" },
+  { value: 90, label: "3 months" },
+];
+
 export default function DriverEarnings() {
   const { data, isPending, isError, isSuccess, error, refetch } = useDriverEarningsQuery();
+  const [range, setRange] = useState<EarningsRangeDays>(7);
+  const seriesQuery = useDriverEarningsSeriesQuery(range);
   const earnings = data ?? DEFAULT_SUMMARY;
   const { stagger, reduced } = useMotionSystem();
 
@@ -102,6 +132,46 @@ export default function DriverEarnings() {
                 );
               })}
             </motion.div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-[15px] font-semibold text-foreground">Earnings trend</h2>
+                {/* Restrained period control: three small pills, no extra chrome. */}
+                <div
+                  className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-card p-1"
+                  role="group"
+                  aria-label="Earnings period"
+                >
+                  {RANGES.map((r) => (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => setRange(r.value)}
+                      aria-pressed={range === r.value}
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition-colors",
+                        range === r.value
+                          ? "bg-primary/15 text-primary"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Suspense fallback={<ChartSkeleton />}>
+                <EarningsChart
+                  series={seriesQuery.data}
+                  isPending={seriesQuery.isPending}
+                  error={
+                    seriesQuery.error instanceof Error ? seriesQuery.error : null
+                  }
+                  onRetry={() => void seriesQuery.refetch()}
+                />
+              </Suspense>
+            </div>
 
             <div className="rounded-2xl border border-border bg-muted/25 p-5">
               <p className="text-[13px] font-semibold text-foreground">

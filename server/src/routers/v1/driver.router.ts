@@ -17,7 +17,7 @@ import {
     markDriverArrivingController,
     startDriverRideController,
 } from '../../controllers/driver-ride.controller'
-import { getDriverEarningsController } from '../../controllers/driver-earnings.controller'
+import { getDriverEarningsController, getDriverEarningsSeriesController } from '../../controllers/driver-earnings.controller'
 import { requireAuth } from '../../middlewares/rbac.middleware'
 import { requireDriverCapability } from '../../middlewares/driver-capability.middleware'
 import { validateRequestBody } from '../../validators'
@@ -47,5 +47,6 @@ driverRouter.post('/rides/:bookingId/complete', completeDriverRideController)
 driverRouter.post('/rides/:bookingId/cancel', cancelDriverRideController)
 
 driverRouter.get('/earnings', getDriverEarningsController)
+driverRouter.get('/earnings/series', getDriverEarningsSeriesController)
 
 export default driverRouter
