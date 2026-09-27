@@ -4,6 +4,7 @@ import { authConfig } from "../config/auth.config";
 import logger from "../config/logger.config";
 import { sendMail } from "./mailer";
 import { initRbac, getAccessControl, getDefaultRoles, DEFAULT_ROLE, ADMIN_ROLES } from "./rbac";
+import { revokeUnprovenCredentialOnSocialLink } from "./account-linking";
 
 const mongoURL = getMongo();
 
@@ -120,6 +121,22 @@ async function buildAuth() {
         account: {
             accountLinking: {
                 updateUserInfoOnLink: true,
+                // Allow a Google sign-in to claim an existing local account that
+                // has not been verified yet. trustedProviders stays unset, so
+                // Better Auth still refuses whenever Google does not report the
+                // address as verified.
+                //
+                // Security invariant: when an unverified local account is promoted
+                // through a verified external identity, its unproven credential
+                // must not survive the promotion. Enforced by the hook below.
+                requireLocalEmailVerified: false,
+            },
+        },
+        databaseHooks: {
+            account: {
+                create: {
+                    after: revokeUnprovenCredentialOnSocialLink,
+                },
             },
         },
         socialProviders: {

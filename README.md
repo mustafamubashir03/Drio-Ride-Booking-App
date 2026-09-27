@@ -367,6 +367,8 @@ Notes that matter in practice:
 - **Between step 1 and step 9 the account exists but is locked.** Better Auth refuses sign-in for that email until it is verified, so an unverified account can never book a ride or hold a driver role.
 - **Google OAuth skips the email step.** Google already verified the address, so those users arrive with `emailVerified: true` from the start (the `account` collection links the provider login).
 - **Nothing sensitive is sent in the email** - the link configures Better Auth to auto-sign-in after verification for a smooth onboarding.
+- **A Google sign-in can claim an existing local account.** Someone who registered with email/password first and then signed in with Google is the same person, so `account.accountLinking.requireLocalEmailVerified` is `false` in `server/src/lib/auth.ts`. The link is only made when Google reports the address as verified - `accountLinking.trustedProviders` is deliberately left unset, so that claim is the gate. The linked row keeps its original id, role and application data, and is promoted to `emailVerified: true`. Covered by `.harness/google-new-user.check.js`.
+- **An unverified local credential does not survive that promotion.** An `emailVerified: false` row carries no proof of who owns it, so a password registered against it before the promotion was never proven to belong to the mailbox owner - and it would start working once the row is promoted. `server/src/lib/account-linking.ts` removes the `credential` account and any sessions of the unproven row as part of the promotion, and keeps the Google account. The policy in short: **verified local account + Google -> link and keep the credential; unverified local account + Google -> link, drop the unproven credential; a Google account that already belongs to another user -> reject, never merge.**
 
 ### Future: the same auth on a mobile client (hints, not plans)
 
@@ -1205,7 +1207,9 @@ Code: `server/src/middlewares/auth-redirect-fallback.middleware.ts`, with the do
 1. A first attempt injected the HTML by monkey-patching `res.end` and returning a `302`, trusting the edge to convert it. It was reverted: the response is written by `better-call` as `setHeader` → `statusCode` → `writeHead` → `end`, and the status was still a 3xx, so it was a guess.
 2. The committed version then hung the harness. `writeHead` had already flushed the status line and headers, so an `!headersSent` guard skipped the body while `Content-Length` was already set — the client waited forever for bytes that never arrived. The fix was to build the document in `writeHead` and emit the bytes in `end`.
 
-**How to remove it.** Once the browser-facing origin is served by something that relays 3xx intact, delete `auth-redirect-fallback.middleware.ts`, `redirect-document.ts` and the single `app.use` in `app.ts`. `oauth-diag.middleware.ts` is a separate temporary diagnostic that should be removed with it.
+**How to remove it.** Once the browser-facing origin is served by something that relays 3xx intact, delete `auth-redirect-fallback.middleware.ts`, `redirect-document.ts` and the single `app.use` in `app.ts`.
+
+**It no longer misreports failures.** A failed OAuth callback also produces a same-origin `Location` - Better Auth sends it to `onAPIError.errorURL` (`/login?error=<code>`). The document used to announce every such redirect as *"You're signed in / Taking you back to your dashboard..."* and only reveal the truth on arrival, which made a callback failure look like a session that was created and then lost. `resolvePresentation` now discriminates on the `?error=` parameter, exactly as it already did for `verify-email`, and shows the `sign-in-failed` variant. The destination and the error code are untouched, so the login page still receives and displays the reason.
 
 ### New endpoint: driver earnings analytics
 
@@ -1281,7 +1285,6 @@ What could **not** be verified here: there is no browser in the development envi
 
 | File | Why it exists | Remove when |
 | --- | --- | --- |
-| `server/src/middlewares/oauth-diag.middleware.ts` | Read-only OAuth diagnostics. Logs presence flags, lengths, cookie names and status codes only — never a token, code, cookie value or secret. | The redirect problem is permanently solved |
 | `server/src/middlewares/auth-redirect-fallback.middleware.ts` | Carries the callback/verification redirect in the body | The browser-facing origin relays 3xx intact |
 | `server/src/middlewares/redirect-document.ts` | The branded transitional document | Same as above |
 

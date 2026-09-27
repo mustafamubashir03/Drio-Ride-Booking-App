@@ -27,7 +27,7 @@
  *    JSON-encoded.
  */
 
-export type RedirectDocumentVariant = "signed-in" | "email-verified";
+export type RedirectDocumentVariant = "signed-in" | "email-verified" | "sign-in-failed";
 
 type Copy = {
     headline: string;
@@ -46,6 +46,15 @@ const COPY: Record<RedirectDocumentVariant, Copy> = {
         headline: "Email verified",
         sub: "Taking you back to sign in...",
         status: "Email verified. Redirecting to sign in.",
+    },
+    // The OAuth callback failed and Better Auth is sending the browser to its
+    // errorURL. Saying "You're signed in" here would be a lie the user only
+    // discovers after landing on the login page, so the screen says what
+    // actually happened and still forwards the error code untouched.
+    "sign-in-failed": {
+        headline: "Sign-in didn't finish",
+        sub: "Taking you back to sign in so you can try again...",
+        status: "Sign-in did not finish. Returning to the sign-in page.",
     },
 };
 

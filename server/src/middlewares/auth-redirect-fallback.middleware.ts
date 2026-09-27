@@ -97,6 +97,13 @@ const resolveSameOriginTarget = (location: string): URL | null => {
  * `?error=<code>`. A success therefore becomes the fixed login destination; a
  * failure keeps Better Auth's own destination, including its error code, so the
  * frontend still receives and can display the reason.
+ *
+ * The same `?error=` discrimination is applied to `oauth-callback`, but only to
+ * the copy. A failed OAuth callback also redirects to a same-origin `Location`
+ * - to `onAPIError.errorURL` - so without this it was announced as
+ * "You're signed in / Taking you back to your dashboard..." and only then
+ * revealed itself as `/login?error=<code>`. The destination and the error code
+ * are untouched, so the frontend still receives and can display the reason.
  */
 const resolvePresentation = (
     route: Route,
@@ -112,7 +119,10 @@ const resolvePresentation = (
         return { target: EMAIL_VERIFIED_DESTINATION, variant: "email-verified" };
     }
 
-    return { target: sameOrigin.toString(), variant: "signed-in" };
+    return {
+        target: sameOrigin.toString(),
+        variant: sameOrigin.searchParams.has("error") ? "sign-in-failed" : "signed-in",
+    };
 };
 
 export const authRedirectFallbackMiddleware = (
