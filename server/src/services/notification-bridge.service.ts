@@ -28,34 +28,43 @@ export type RideCancellationBy = "passenger" | "driver" | "system";
 export const notifyDrivers = async (rideId: string, driverIds: string[], rideInfo: RideInfo): Promise<string[]> => {
     if (driverIds.length === 0) return [];
     try {
-        logger.info(`[BOOKING] notifyDrivers: rideId=${rideId}, driverIds=${JSON.stringify(driverIds)}, rideInfo=${JSON.stringify(rideInfo)}`);
+        logger.info(`[SOCKET-BRIDGE] booking=${rideId} notifying drivers=${JSON.stringify(driverIds)} -> ${SOCKET_SERVER_URL}/api/v1/notification/notify-drivers`);
         const res = await fetch(`${SOCKET_SERVER_URL}/api/v1/notification/notify-drivers`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ rideId, driverIds, rideInfo }),
         });
         if (!res.ok) {
-            logger.error("[BOOKING] Failed to notify drivers", await res.text());
+            logger.error(`[SOCKET-BRIDGE] booking=${rideId} bridge responded ${res.status}: ${await res.text()}`);
             return [];
         }
 
         let notifiedDriverIds: string[];
         try {
             const data = (await res.json()) as { notifiedDriverIds?: unknown };
-            if (!Array.isArray(data.notifiedDriverIds)) return [];
+            if (!Array.isArray(data.notifiedDriverIds)) {
+                logger.error(`[SOCKET-BRIDGE] booking=${rideId} bridge 200 without notifiedDriverIds array`);
+                return [];
+            }
             notifiedDriverIds = data.notifiedDriverIds.filter((id): id is string => typeof id === "string");
         } catch {
+            logger.error(`[SOCKET-BRIDGE] booking=${rideId} bridge 200 with unparseable body`);
             return [];
         }
 
         if (notifiedDriverIds.length < driverIds.length) {
-            logger.warn(`[BOOKING] Notified ${notifiedDriverIds.length}/${driverIds.length} drivers for ride ${rideId}`);
+            // Names the drivers that were reachable and the ones that were not,
+            // so a dropped request can be attributed to socket registration
+            // rather than to the radius.
+            logger.warn(
+                `[SOCKET-BRIDGE] booking=${rideId} emitted=${JSON.stringify(notifiedDriverIds)} noSocket=${JSON.stringify(driverIds.filter((id) => !notifiedDriverIds.includes(id)))}`,
+            );
         } else {
-            logger.info(`[BOOKING] Notified ${driverIds.length} drivers for ride ${rideId}`);
+            logger.info(`[SOCKET-BRIDGE] booking=${rideId} emitted=${JSON.stringify(notifiedDriverIds)}`);
         }
         return notifiedDriverIds;
     } catch (err) {
-        logger.error("[BOOKING] Error calling socket server notify-drivers", err);
+        logger.error(`[SOCKET-BRIDGE] booking=${rideId} bridge request failed`, err);
         return [];
     }
 };

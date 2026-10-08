@@ -1,5 +1,10 @@
 import logger from "../config/logger.config";
-import { SEARCH_RADII_KM, SEARCH_STAGE_INTERVAL_MS, SEARCH_MAX_DURATION_MS, SEARCH_FINAL_RETRY_GRACE_MS } from "../config/search.config";
+import {
+    SEARCH_RADII_KM,
+    SEARCH_MAX_RADIUS_KM,
+    SEARCH_STAGE_INTERVAL_MS,
+    SEARCH_MAX_DURATION_MS,
+} from "../config/search.config";
 import {
     findPendingSearchingBookingsRepository,
     cancelBookingRepository,
@@ -8,6 +13,7 @@ import {
     findNearByDriversService,
     isDriverLocationFresh,
     getDriverActiveRideBookingIdService,
+    getDriverSocketIdsService,
     getNotifiedDriversService,
     storeNotifiedDriversService,
     deleteNotifiedDriversService,
@@ -22,17 +28,27 @@ import { notifyDrivers, notifyPassenger, removeRideNotification, type RideInfo }
  * Driver discovery for a booking.
  *
  * Controlled expansion schedule (owned by this service, never by the client):
- *   - Stage 0: 5 km  — notified immediately at booking creation
- *   - Stage 1: 10 km — after  SEARCH_STAGE_INTERVAL_MS
- *   - Stage 2: 15 km — after  2×SEARCH_STAGE_INTERVAL_MS
- *   - Stage 3: 20 km — after  3×SEARCH_STAGE_INTERVAL_MS
- *   - Timeout:  4× + final retry grace — booking expires as cancelled / no_driver_found
+ *   - Stage 0:  5 km — notified immediately at booking creation
+ *   - Stage 1: 15 km — after  SEARCH_STAGE_INTERVAL_MS
+ *   - Stage 2: 25 km — after  2xSEARCH_STAGE_INTERVAL_MS
+ *   - Stage 3: 45 km — after  3xSEARCH_STAGE_INTERVAL_MS
+ *   - Stage 4: 50 km — after  4xSEARCH_STAGE_INTERVAL_MS
+ *   - Timeout:  5xSEARCH_STAGE_INTERVAL_MS — booking expires as cancelled / no_driver_found
  *
  * Eligibility per candidate (nearest-first via GEORADIUS … ASC):
  *   - location metadata still fresh (`driver-location:<id>` key alive),
  *   - no active ride (`driver-active-ride:<id>` key absent),
  *   - not already notified for this booking (`notifiedDrivers:<bookingId>`),
  * so each radius stage only ever pings drivers nobody has contacted yet.
+ * Socket reachability is reported as a diagnostic, never used as a filter — see
+ * collectEligibleDriverIds.
+ *
+ * Search progress and notification delivery are tracked SEPARATELY. A stage is
+ * considered searched the moment its radius has been queried, regardless of how
+ * many of the candidates could actually be reached. Conflating the two is what
+ * previously froze the ladder at a single radius: one eligible-but-offline
+ * driver made `notified < candidates` true, which blocked every wider radius
+ * for the rest of the booking's life.
  */
 
 const firstStageFromElapsed = (elapsedMs: number) => {
@@ -55,6 +71,12 @@ const parseGeoRadiusIds = (result: unknown): string[] => {
 /**
  * Nearest-first eligible drivers for a given radius, skipping drivers that are
  * stale, already on a ride, or have already been notified for this booking.
+ *
+ * Offer reachability is deliberately NOT a filter here. The bridge already
+ * reports exactly which drivers it could emit to, and a driver without a live
+ * socket can no longer stall the ladder, so gating the candidate list on
+ * socket state would only hide the delivery outcome from the logs. It is
+ * reported as a diagnostic instead.
  */
 export const collectEligibleDriverIds = async ({
     bookingId,
@@ -69,6 +91,9 @@ export const collectEligibleDriverIds = async ({
 }): Promise<string[]> => {
     const raw = await findNearByDriversService(longitude, latitude, radiusKm);
     const nearestFirst = parseGeoRadiusIds(raw);
+    logger.info(
+        `[DISPATCH] booking=${bookingId} radius=${radiusKm}km geoCandidates=${nearestFirst.length}`,
+    );
     if (nearestFirst.length === 0) return [];
 
     const already = new Set(await getNotifiedDriversService(bookingId));
@@ -80,6 +105,22 @@ export const collectEligibleDriverIds = async ({
         if (activeRide) continue;
         eligible.push(driverId);
     }
+
+    // Diagnostic only: which candidates the bridge will not be able to reach.
+    // Never used to change the candidate list.
+    if (eligible.length > 0) {
+        const reachable = new Set(await getDriverSocketIdsService(eligible));
+        const unreachable = eligible.filter((id) => !reachable.has(id));
+        if (unreachable.length > 0) {
+            logger.info(
+                `[DISPATCH] booking=${bookingId} radius=${radiusKm}km unreachableCandidates=${JSON.stringify(unreachable)}`,
+            );
+        }
+    }
+
+    logger.info(
+        `[DISPATCH] booking=${bookingId} radius=${radiusKm}km eligible=${JSON.stringify(eligible)}`,
+    );
     return eligible;
 };
 
@@ -109,8 +150,16 @@ export const kickoffDriverSearch = async ({
     rideInfo: RideInfo;
 }) => {
     const radiusKm = SEARCH_RADII_KM[0];
+    logger.info(
+        `[DISPATCH] booking=${bookingId} kickoff start pickup=${longitude},${latitude} radius=${radiusKm}km`,
+    );
     await setSearchStageService(bookingId, 0);
-    const driverIds = await collectEligibleDriverIds({ bookingId, longitude, latitude, radiusKm });
+    const driverIds = await collectEligibleDriverIds({
+        bookingId,
+        longitude,
+        latitude,
+        radiusKm,
+    });
     let notifiedCount = 0;
     if (driverIds.length > 0) {
         const notifiedDriverIds = await notifyDrivers(bookingId, driverIds, rideInfo);
@@ -119,13 +168,23 @@ export const kickoffDriverSearch = async ({
             await storeNotifiedDriversService(bookingId, notifiedDriverIds);
         }
     }
-    logger.info(`[SEARCH] kickoff bookingId=${bookingId} radius=${radiusKm}km notified=${notifiedCount}`);
+    logger.info(
+        `[DISPATCH] booking=${bookingId} kickoff done radius=${radiusKm}km candidates=${driverIds.length} notified=${notifiedCount}`,
+    );
     return notifiedCount;
 };
 
-const advanceStage = async (booking: any, stage: number) => {
+/**
+ * Search ONE radius stage and report the radius that was actually queried.
+ *
+ * The stage is always persisted once the radius has been searched. Notification
+ * completeness is logged and surfaced to the passenger as search progress, but
+ * it deliberately does NOT gate the next stage: a candidate whose socket is busy
+ * or briefly missing must not be able to strand the search at this radius.
+ */
+const advanceStage = async (booking: any, stage: number): Promise<number> => {
     const bookingId = String(booking._id);
-    const radiusKm = SEARCH_RADII_KM[stage];
+    const radiusKm = Math.min(SEARCH_RADII_KM[stage], SEARCH_MAX_RADIUS_KM);
     const driverIds = await collectEligibleDriverIds({
         bookingId,
         longitude: booking.source.longitude,
@@ -133,28 +192,31 @@ const advanceStage = async (booking: any, stage: number) => {
         radiusKm,
     });
     const passengerId = booking.passenger?._id ? String(booking.passenger._id) : null;
+
     let notifiedCount = 0;
     if (driverIds.length > 0) {
-        const notifiedDriverIds = await notifyDrivers(bookingId, driverIds, buildRideInfo(booking));
+        logger.info(
+            `[DISPATCH] booking=${bookingId} stage=${stage} notifying=${JSON.stringify(driverIds)}`,
+        );
+        const notifiedDriverIds = await notifyDrivers(
+            bookingId,
+            driverIds,
+            buildRideInfo(booking),
+        );
         notifiedCount = notifiedDriverIds.length;
         if (notifiedDriverIds.length > 0) {
             await storeNotifiedDriversService(bookingId, notifiedDriverIds);
         }
         if (notifiedDriverIds.length < driverIds.length) {
-            logger.warn(`[SEARCH] stage ${stage} bookingId=${bookingId} notification incomplete=${notifiedDriverIds.length}/${driverIds.length}`);
-            if (passengerId) {
-                await notifyPassenger({
-                    bookingId,
-                    passengerId,
-                    status: null,
-                    driverId: null,
-                    searchProgress: { stage, radiusKm },
-                });
-            }
-            return false;
+            logger.warn(
+                `[SEARCH] stage ${stage} bookingId=${bookingId} notification incomplete=${notifiedDriverIds.length}/${driverIds.length}`,
+            );
         }
     }
+
+    // Progress is persisted unconditionally: the radius HAS been searched.
     await setSearchStageService(bookingId, stage);
+
     if (passengerId) {
         await notifyPassenger({
             bookingId,
@@ -164,8 +226,10 @@ const advanceStage = async (booking: any, stage: number) => {
             searchProgress: { stage, radiusKm },
         });
     }
-    logger.info(`[SEARCH] stage ${stage} bookingId=${bookingId} radius=${radiusKm}km notified=${notifiedCount}`);
-    return true;
+    logger.info(
+        `[SEARCH] stage ${stage} bookingId=${bookingId} radius=${radiusKm}km notified=${notifiedCount}`,
+    );
+    return notifiedCount;
 };
 
 const hasDriver = (booking: any) => Boolean(booking.driver);
@@ -208,6 +272,10 @@ export const expireBookingSearch = async (booking: any) => {
 /**
  * One sweep over every pending, unassigned booking: expand the radius as the
  * stage budget elapses, and expire the search once the budget is exhausted.
+ *
+ * The whole budget is bounded by SEARCH_MAX_DURATION_MS, so every booking is
+ * guaranteed to resolve one way or the other — a claimed ride, a passenger
+ * cancellation, or no_driver_found — and no search can run indefinitely.
  */
 export const runDriverSearchCycle = async (): Promise<{ advanced: number; expired: number }> => {
     const bookings = await findPendingSearchingBookingsRepository();
@@ -222,8 +290,8 @@ export const runDriverSearchCycle = async (): Promise<{ advanced: number; expire
         const currentStage = await getSearchStageService(bookingId);
         const finalStage = SEARCH_RADII_KM.length - 1;
         if (
-            elapsedMs >= SEARCH_MAX_DURATION_MS + SEARCH_FINAL_RETRY_GRACE_MS ||
-            (elapsedMs >= SEARCH_MAX_DURATION_MS && currentStage >= finalStage)
+            elapsedMs >= SEARCH_MAX_DURATION_MS ||
+            (elapsedMs >= SEARCH_MAX_DURATION_MS - SEARCH_STAGE_INTERVAL_MS && currentStage >= finalStage)
         ) {
             const result = await expireBookingSearch(booking);
             if (result) expired++;
@@ -233,9 +301,15 @@ export const runDriverSearchCycle = async (): Promise<{ advanced: number; expire
         const targetStage = firstStageFromElapsed(elapsedMs);
         for (let stage = currentStage + 1; stage <= targetStage; stage++) {
             try {
-                const didAdvance = await advanceStage(booking, stage);
-                if (!didAdvance) break;
+                const notified = await advanceStage(booking, stage);
                 advanced++;
+                if (notified > 0) {
+                    // A live driver was reached at this radius. Leave the stage
+                    // recorded so a later sweep can still widen if nobody
+                    // accepts in time, but there is no reason to burn the rest
+                    // of the ladder in the same pass.
+                    break;
+                }
             } catch (err) {
                 logger.error(`[SEARCH] failed to advance bookingId=${bookingId} to stage=${stage}`, err);
                 break;
@@ -263,4 +337,9 @@ export const startDriverSearchSweeper = (intervalMs: number) => {
     }, intervalMs);
 };
 
-export { SEARCH_RADII_KM, SEARCH_STAGE_INTERVAL_MS, SEARCH_MAX_DURATION_MS, SEARCH_FINAL_RETRY_GRACE_MS };
+export {
+    SEARCH_RADII_KM,
+    SEARCH_MAX_RADIUS_KM,
+    SEARCH_STAGE_INTERVAL_MS,
+    SEARCH_MAX_DURATION_MS,
+};

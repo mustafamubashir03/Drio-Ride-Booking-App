@@ -92,7 +92,11 @@ export default function DriverLayout() {
       timeStamps: string;
     }) => {
       if (handledRideIdsRef.current.has(data.rideId)) return;
-      const expiresAt = Date.now() + 15000; // 15 seconds from now
+      // 30 seconds to see and answer the request. This is deliberately shorter
+      // than the passenger's whole search window (server: ~50s) and the ladder
+      // widens independently of it, so a slow driver never shortens anyone
+      // else's search.
+      const expiresAt = Date.now() + 30000;
       setIncomingRide({
         rideId: data.rideId,
         pickup: data.rideInfo.pickup,
@@ -185,7 +189,7 @@ export default function DriverLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-dismiss incoming ride request after 15 seconds
+  // Auto-dismiss incoming ride request after its own 30s window
   useEffect(() => {
     if (!incomingRide) return;
     const timer = setTimeout(() => {

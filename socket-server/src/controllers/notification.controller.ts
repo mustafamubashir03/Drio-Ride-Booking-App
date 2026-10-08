@@ -7,7 +7,7 @@ import logger from "../config/logger.config";
 export async function notifyDriversController(req: Request, res: Response): Promise<void> {
     try {
         const { rideId, rideInfo, driverIds } = req.body;
-        logger.info(`[NOTIFICATION] notify-drivers called: rideId=${rideId}, driverIds=${JSON.stringify(driverIds)}, rideInfo=${JSON.stringify(rideInfo)}`);
+        logger.info(`[SOCKET-BRIDGE] booking=${rideId} notify-drivers received driverIds=${JSON.stringify(driverIds)}`);
         const notificationDTO = {
             rideId,
             rideInfo,
@@ -16,13 +16,18 @@ export async function notifyDriversController(req: Request, res: Response): Prom
         const notifiedDriverIds: string[] = [];
         for (const driverId of driverIds) {
             const socketId = await getDriverSocket(driverId)
-            logger.info(`[NOTIFICATION] driverId=${driverId}, socketId=${socketId}`);
             if (socketId && io.sockets.sockets.has(socketId)) {
                 io.to(socketId).emit('new_ride_notification', notificationDTO)
                 notifiedDriverIds.push(driverId);
-                logger.info(`[NOTIFICATION] Emitted new_ride_notification to driverId=${driverId}, socketId=${socketId}`);
+                logger.info(`[SOCKET] booking=${rideId} emitted new_ride_notification driver=${driverId} socketId=${socketId}`);
             } else {
-                logger.warn(`[NOTIFICATION] No socket found for driverId=${driverId}`);
+                // A driver can be in the GEO index with a fresh GPS fix and
+                // still have no usable socket (tab closed, reconnect gap, or a
+                // mapping left by a previous process). Naming it here is what
+                // separates "not nearby" from "nearby but unreachable".
+                logger.warn(
+                    `[SOCKET] booking=${rideId} NO EMIT driver=${driverId} mappedSocketId=${socketId ?? "none"} connected=${socketId ? io.sockets.sockets.has(socketId) : false}`,
+                );
             }
         }
         res.status(200).json({ success: true, message: "Notification sent successfully", notifiedDriverIds })

@@ -120,6 +120,28 @@ export const isDriverLocationFresh = async (driverId: string): Promise<boolean> 
     }
 }
 
+// ── Driver socket registry (written by socket-server, read here) ────────
+// `driver-socket` is a hash of driverId -> socketId, written by the
+// socket-server when a driver completes `driver-login` and removed on
+// disconnect. The main API only reads it, so dispatch can tell "this driver is
+// reachable right now" apart from "this driver has a recent GPS fix", which is
+// the difference between a radius stage that advances and one that stalls.
+
+const DRIVER_SOCKET_KEY = "driver-socket";
+
+/** Batch read: one round trip for a whole radius stage instead of N. */
+export const getDriverSocketIdsService = async (driverIds: string[]): Promise<string[]> => {
+    if (driverIds.length === 0) return [];
+    try {
+        const socketIds = await redisClient.hmGet(DRIVER_SOCKET_KEY, driverIds);
+        return socketIds.filter((id): id is string => Boolean(id));
+    }
+    catch (error) {
+        logger.error("[RIDE-MAP] failed to batch-read driver-socket", error);
+        return [];
+    }
+};
+
 // ── Per-booking search progress ────────────────────────────────────────
 // `search-stage:<bookingId>` tracks which radius stage has been attempted so
 // the sweep only opens the next radius once the previous attempt had a chance

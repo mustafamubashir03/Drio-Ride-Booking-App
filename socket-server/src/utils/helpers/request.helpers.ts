@@ -9,5 +9,10 @@ export const asyncLocalStorage = new AsyncLocalStorage<AsyncLocalStorageType>();
 
 export const getCorrelationId = () => {
     const asyncStore = asyncLocalStorage.getStore();
-    return asyncStore?.correlationId || 'unknown-error-while-creating-correlation-id'; // Default value if not found 
+    // Logs emitted outside an HTTP request — startup, Redis connect, Socket.IO
+    // connection/login/location handlers — have no async store. The previous
+    // sentinel read as "an error occurred while creating a correlation id",
+    // which is false and buried real dispatch logs under a scary-looking
+    // message on every single line.
+    return asyncStore?.correlationId || "no-request-context";
 }
