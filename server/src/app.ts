@@ -9,6 +9,7 @@ import { attachCorrelationIdMiddleware } from './middlewares/correlation.middlew
 import { logForwardedClientIpMiddleware } from './middlewares/client-ip.middleware';
 import placesRouter from './routers/v1/places.router';
 import routesRouter from './routers/routes.router';
+import { maybeRunSearchSweep } from './services/driver-search.service';
 import type { toNodeHandler as toNodeHandlerFactory } from "better-auth/node" with { "resolution-mode": "import" };
 import { getAuth, client } from "./lib/auth";
 
@@ -78,6 +79,31 @@ app.all("/api/auth/{*splat}", (req, res, next) => {
 app.use(express.json());
 
 app.use(attachCorrelationIdMiddleware);
+
+/**
+ * Drive the search sweep from real traffic as well as from the sweeper interval.
+ *
+ * Radius expansion and search expiry were owned exclusively by a setInterval on
+ * the Render service, which the platform freezes when idle. A frozen sweeper
+ * meant a booking could sit at stage 0 until some later sweep found it already
+ * past budget and expired it outright, skipping every wider radius - the
+ * production "no driver found" for an online driver 7.28 km away, inside the
+ * 15 km stage.
+ *
+ * The passenger polls its bookings every few seconds while searching, so
+ * ordinary traffic is a reliable heartbeat. `maybeRunSearchSweep` is throttled
+ * and guarded by a cross-process Redis lock, so extra triggers cost one
+ * timestamp comparison and cannot cause duplicate notifications.
+ *
+ * Deliberately not awaited: dispatch latency must never depend on a sweep.
+ */
+app.use((req, res, next) => {
+    if (req.path.startsWith("/passenger") || req.path.startsWith("/driver")) {
+        void maybeRunSearchSweep(`traffic:${req.method}`);
+    }
+    next();
+});
+
 app.use('/api/v1', v1Router);
 app.use('/api/v2', v2Router);
 app.use('/api/places', placesRouter);

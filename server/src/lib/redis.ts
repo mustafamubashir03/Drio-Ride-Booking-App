@@ -7,6 +7,10 @@ export const redisIdentity = describeRedisUri(dbConfig.redisUri);
 
 const redisClient = createClient({
     url: dbConfig.redisUri,
+    // node-redis negotiates RESP3 via HELLO, which Redis < 6 does not implement.
+    // Local/dev instances are Redis 5, so allow pinning RESP2 without changing
+    // the negotiated default for any deployed Redis.
+    ...(process.env.REDIS_RESP === "2" ? { RESP: 2 as const } : {}),
     socket: {
         reconnectStrategy: (retries) => {
             const delay = Math.min(retries * 50, 2000);

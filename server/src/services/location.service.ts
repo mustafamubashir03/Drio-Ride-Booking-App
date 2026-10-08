@@ -142,6 +142,41 @@ export const getDriverSocketIdsService = async (driverIds: string[]): Promise<st
     }
 };
 
+/**
+ * Drop GEO members that no longer have a freshness key.
+ *
+ * `driver-location:<id>` carries a short TTL, so once a driver stops streaming
+ * their GEO member becomes permanently unreferenced - the sorted set never
+ * shrinks on its own. That is how a user who operated as a driver once (and is
+ * currently only a passenger) stayed in the index and showed up in
+ * `geoCandidates` for later bookings. Eligibility filtering already refused to
+ * notify them, so this was never a wrong-dispatch bug, but the index grew
+ * without bound and the candidate counts in the logs were misleading.
+ *
+ * Deliberately additive and self-limiting: it removes only members with no
+ * freshness key, in bounded batches, one member at a time. It never clears the
+ * whole GEO set, so a live driver can never be removed by this path.
+ */
+export const reapStaleGeoMembersService = async (limit = 50): Promise<number> => {
+    let removed = 0;
+    try {
+        const members = await redisClient.zRange("drivers", 0, limit * 4 - 1);
+        for (const member of members) {
+            if (removed >= limit) break;
+            const fresh = await redisClient.exists(`driver-location:${member}`);
+            if (fresh === 0) {
+                await redisClient.zRem("drivers", member);
+                removed++;
+                logger.info(`[GEO] reaped stale member driverId=${member} (no freshness key)`);
+            }
+        }
+    }
+    catch (error) {
+        logger.error("[GEO] stale member reaper failed", error);
+    }
+    return removed;
+};
+
 // ── Per-booking search progress ────────────────────────────────────────
 // `search-stage:<bookingId>` tracks which radius stage has been attempted so
 // the sweep only opens the next radius once the previous attempt had a chance
@@ -171,9 +206,55 @@ export const setSearchStageService = async (bookingId: string, stage: number) =>
 export const deleteSearchStageService = async (bookingId: string) => {
     try {
         await redisClient.del(`search-stage:${bookingId}`);
+        await redisClient.del(`search-progress:${bookingId}`);
     }
     catch (error) {
         logger.error("Failed to delete search stage", error);
+    }
+}
+
+/**
+ * The radius actually queried for the current stage.
+ *
+ * Persisted alongside the stage so the bookings API can report real search
+ * progress. The socket already streams this to the passenger, but if the
+ * passenger socket is down or reconnects late the radius indicator would stay
+ * on "Searching" while the backend had already widened - so the UI was showing
+ * something the backend was not doing. This gives the poll the same numbers the
+ * search actually used instead of the frontend inventing them.
+ */
+export const setSearchProgressService = async (
+    bookingId: string,
+    stage: number,
+    radiusKm: number,
+) => {
+    try {
+        await redisClient.set(
+            `search-progress:${bookingId}`,
+            JSON.stringify({ stage, radiusKm }),
+            { EX: 300 },
+        );
+    }
+    catch (error) {
+        logger.error("Failed to write search progress", error);
+    }
+}
+
+export const getSearchProgressService = async (
+    bookingId: string,
+): Promise<{ stage: number; radiusKm: number } | null> => {
+    try {
+        const raw = await redisClient.get(`search-progress:${bookingId}`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { stage?: unknown; radiusKm?: unknown };
+        if (typeof parsed.stage !== "number" || typeof parsed.radiusKm !== "number") {
+            return null;
+        }
+        return { stage: parsed.stage, radiusKm: parsed.radiusKm };
+    }
+    catch (error) {
+        logger.error("Failed to read search progress", error);
+        return null;
     }
 }
 
@@ -209,6 +290,59 @@ export const getDriverActiveRideBookingIdService = async (driverId: string) => {
     catch (error) {
         logger.error("Failed to get driver active ride", error);
         return null;
+    }
+}
+
+// ── Search sweep lock ─────────────────────────────────────────────────────
+//
+// Booking creation (Vercel) and the search sweeper (Render) are two processes
+// that can both decide to advance a search. Without a lock they can compute the
+// same eligible-driver list concurrently and both notify the same driver, so the
+// lock makes "one sweep at a time" a real guarantee instead of a hope.
+//
+// It also lets any process safely *drive* a sweep on request, which is what
+// keeps searches progressing when the dedicated sweeper process is not running.
+
+const SEARCH_SWEEP_LOCK_KEY = "search-sweep:lock";
+
+const RELEASE_LOCK_IF_OWNER_SCRIPT = `
+local current = redis.call('GET', KEYS[1])
+if current == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
+
+/** Returns true when this caller now owns the sweep lock. */
+export const acquireSearchSweepLockService = async (
+    owner: string,
+    ttlMs: number,
+): Promise<boolean> => {
+    try {
+        const result = await redisClient.set(SEARCH_SWEEP_LOCK_KEY, owner, {
+            NX: true,
+            PX: ttlMs,
+        });
+        return result === "OK";
+    }
+    catch (error) {
+        // A Redis failure must not wedge matching: let the caller proceed and
+        // rely on the notified-driver dedup set for safety.
+        logger.error("[SEARCH] failed to acquire sweep lock", error);
+        return true;
+    }
+};
+
+/** Releases only if still owned, so a slow sweep cannot free a newer one's lock. */
+export const releaseSearchSweepLockService = async (owner: string): Promise<void> => {
+    try {
+        await redisClient.eval(RELEASE_LOCK_IF_OWNER_SCRIPT, {
+            keys: [SEARCH_SWEEP_LOCK_KEY],
+            arguments: [owner],
+        });
+    }
+    catch (error) {
+        logger.error("[SEARCH] failed to release sweep lock", error);
     }
 }
 

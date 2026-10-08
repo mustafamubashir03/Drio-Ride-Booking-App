@@ -1,7 +1,7 @@
 import logger from "../config/logger.config";
 import { Response, Request } from "express";
 import { createBookingService, listBookingsService } from "../services/passenger.service";
-import { getDriverLocationMetadata } from "../services/location.service";
+import { getDriverLocationMetadata, getSearchProgressService } from "../services/location.service";
 import { Types } from "mongoose";
 import { cancelPassengerRideService, reviewPassengerRideService } from "../services/passenger-ride.service";
 import { getDriverRatingSummariesRepository } from "../repositories/booking.repository";
@@ -52,6 +52,17 @@ export const listBookingsController = async (req: Request, res: Response) => {
         });
         const driverRatings = await getDriverRatingSummariesRepository(driverIds);
 
+        // Real backend search progress for the still-searching booking, so the
+        // radius indicator survives a passenger socket that is down or
+        // reconnecting. Read from the same key the sweeper writes, so the number
+        // is the radius actually queried rather than one the client guessed.
+        const activeSearch = bookings.find(
+            (b: any) => b.status === "pending" && !b.driver,
+        ) as { _id: unknown } | undefined;
+        const searchProgress = activeSearch
+            ? await getSearchProgressService(String(activeSearch._id))
+            : null;
+
         const cleanDisplayName = (value?: string) =>
             value && /[+-]?\d+\.\d{2,}\s*,\s*[+-]?\d+\.\d{2,}/.test(value)
                 ? value.split(" · ")[0].trim()
@@ -72,6 +83,9 @@ export const listBookingsController = async (req: Request, res: Response) => {
                 _id: id.toString(),
                 status: booking.status,
                 fare: booking.fare ?? null,
+                searchProgress: searchProgress && String(booking._id) === String(activeSearch?._id)
+                    ? searchProgress
+                    : null,
                 source: {
                     ...booking.source,
                     displayName: cleanDisplayName(booking.source?.displayName),

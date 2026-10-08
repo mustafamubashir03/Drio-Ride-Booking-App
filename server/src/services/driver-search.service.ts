@@ -3,6 +3,7 @@ import {
     SEARCH_RADII_KM,
     SEARCH_MAX_RADIUS_KM,
     SEARCH_STAGE_INTERVAL_MS,
+    SEARCH_SWEEP_INTERVAL_MS,
     SEARCH_MAX_DURATION_MS,
 } from "../config/search.config";
 import {
@@ -18,7 +19,17 @@ import {
     storeNotifiedDriversService,
     deleteNotifiedDriversService,
     setSearchStageService,
+
     getSearchStageService,
+
+    setSearchProgressService,
+
+    acquireSearchSweepLockService,
+
+    releaseSearchSweepLockService,
+
+
+    reapStaleGeoMembersService,
     deleteSearchStageService,
     deleteRidePassengerService,
 } from "./location.service";
@@ -98,11 +109,24 @@ export const collectEligibleDriverIds = async ({
 
     const already = new Set(await getNotifiedDriversService(bookingId));
     const eligible: string[] = [];
+    // Why each GEO candidate was excluded. Without this, "eligible=[]" is
+    // indistinguishable from "GEO returned nobody", which is exactly the
+    // ambiguity that made the production failure hard to attribute.
+    const excluded: { driverId: string; reason: string }[] = [];
     for (const driverId of nearestFirst) {
-        if (already.has(driverId)) continue;
-        if (!(await isDriverLocationFresh(driverId))) continue;
+        if (already.has(driverId)) {
+            excluded.push({ driverId, reason: "already_notified" });
+            continue;
+        }
+        if (!(await isDriverLocationFresh(driverId))) {
+            excluded.push({ driverId, reason: "location_stale" });
+            continue;
+        }
         const activeRide = await getDriverActiveRideBookingIdService(driverId);
-        if (activeRide) continue;
+        if (activeRide) {
+            excluded.push({ driverId, reason: `on_active_ride:${activeRide}` });
+            continue;
+        }
         eligible.push(driverId);
     }
 
@@ -119,7 +143,8 @@ export const collectEligibleDriverIds = async ({
     }
 
     logger.info(
-        `[DISPATCH] booking=${bookingId} radius=${radiusKm}km eligible=${JSON.stringify(eligible)}`,
+        `[DISPATCH] booking=${bookingId} radius=${radiusKm}km eligible=${JSON.stringify(eligible)} ` +
+        `excluded=${JSON.stringify(excluded)}`,
     );
     return eligible;
 };
@@ -150,6 +175,7 @@ export const kickoffDriverSearch = async ({
     rideInfo: RideInfo;
 }) => {
     const radiusKm = SEARCH_RADII_KM[0];
+    await setSearchProgressService(bookingId, 0, radiusKm);
     logger.info(
         `[DISPATCH] booking=${bookingId} kickoff start pickup=${longitude},${latitude} radius=${radiusKm}km`,
     );
@@ -216,6 +242,7 @@ const advanceStage = async (booking: any, stage: number): Promise<number> => {
 
     // Progress is persisted unconditionally: the radius HAS been searched.
     await setSearchStageService(bookingId, stage);
+    await setSearchProgressService(bookingId, stage, radiusKm);
 
     if (passengerId) {
         await notifyPassenger({
@@ -282,6 +309,10 @@ export const runDriverSearchCycle = async (): Promise<{ advanced: number; expire
     let advanced = 0;
     let expired = 0;
 
+    // Keep the GEO index honest: members with no freshness key are users who
+    // stopped streaming (including passengers who previously drove).
+    await reapStaleGeoMembersService();
+
     for (const booking of bookings) {
         if (hasDriver(booking)) continue; // defensive: only driver:null qualifies
         const bookingId = String(booking._id);
@@ -323,18 +354,67 @@ export const runDriverSearchCycle = async (): Promise<{ advanced: number; expire
 };
 
 export const startDriverSearchSweeper = (intervalMs: number) => {
-    let running = false;
     return setInterval(() => {
-        if (running) return;
-        running = true;
-        runDriverSearchCycle()
-            .catch((err) => {
-                logger.error("[SEARCH] sweep failed", err);
-            })
-            .finally(() => {
-                running = false;
-            });
+        void maybeRunSearchSweep("interval");
     }, intervalMs);
+};
+
+// ── Sweep scheduling ──────────────────────────────────────────────────────
+//
+// Why this exists: the sweeper used to be a bare interval on a Render free-tier
+// web service, which the platform freezes when idle. While frozen, no search
+// advanced. Booking creation still ran kickoff on Vercel (always on), but only
+// the 5 km stage - so a driver just beyond the initial radius was never
+// considered, and the first sweep that eventually ran found the booking already
+// past its budget and expired it immediately, skipping stages 1-4 entirely.
+// That is the production failure: "no driver found" for a driver who was online
+// with fresh GEO, sitting 7.28 km away inside the 15 km stage.
+//
+// Two changes make that impossible:
+//   1. `runDriverSearchCycle` takes a cross-process lock, so any number of
+//      processes may trigger a sweep but only one ever runs it.
+//   2. Sweeps are also driven by real API traffic (throttled). The passenger
+//      polls every few seconds while searching, so the ladder keeps advancing
+//      even if the dedicated interval is frozen or the process was restarted.
+
+let lastSweepStartedAt = 0;
+let sweepInFlight = false;
+const SWEEP_OWNER_PREFIX = `sweep-${process.pid}`;
+
+/** Throttled, lock-guarded sweep. Safe to call from anywhere, any process. */
+export const maybeRunSearchSweep = async (trigger: string) => {
+    const now = Date.now();
+    if (sweepInFlight) return;
+    if (now - lastSweepStartedAt < SEARCH_SWEEP_INTERVAL_MS) return;
+    lastSweepStartedAt = now;
+    sweepInFlight = true;
+
+    const owner = `${SWEEP_OWNER_PREFIX}-${now}`;
+    const acquired = await acquireSearchSweepLockService(
+        owner,
+        SEARCH_SWEEP_INTERVAL_MS * 10,
+    );
+    if (!acquired) {
+        // Another process is sweeping right now; its work covers ours.
+        sweepInFlight = false;
+        return;
+    }
+
+    try {
+        const result = await runDriverSearchCycle();
+        if (result.advanced > 0 || result.expired > 0) {
+            logger.info(
+                `[SEARCH] sweep trigger=${trigger} advanced=${result.advanced} expired=${result.expired}`,
+            );
+        }
+    }
+    catch (error) {
+        logger.error(`[SEARCH] sweep failed trigger=${trigger}`, error);
+    }
+    finally {
+        await releaseSearchSweepLockService(owner);
+        sweepInFlight = false;
+    }
 };
 
 export {
