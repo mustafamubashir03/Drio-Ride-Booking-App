@@ -277,6 +277,11 @@ export default function Dashboard() {
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewDismissed, setReviewDismissed] = useState(false);
+// Rating is asked for in a portalled dialog rather than inline under the trip
+// summary, where it pushed the rest of the completed-ride panel off screen.
+// Mounted once at the component root, like the cancel dialog, because
+// renderRideStatusSurface renders a desktop and a mobile copy of this surface.
+const [reviewOpen, setReviewOpen] = useState(false);
   const [bookingFeedback, setBookingFeedback] =
     useState<BookingRecord["feedback"]>({ rating: null, comment: null, reviewedAt: null });
   const [historyReviewId, setHistoryReviewId] = useState<string | null>(null);
@@ -733,6 +738,7 @@ export default function Dashboard() {
       setBookingFeedback(result.feedback);
       setReviewRating(0);
       setReviewComment("");
+      setReviewOpen(false);
     } catch (e) {
       setReviewError(
         e instanceof Error ? e.message : "Could not submit your review.",
@@ -1520,77 +1526,20 @@ export default function Dashboard() {
                 </p>
               </div>
             ) : (
-              <div className="mt-4 rounded-2xl border border-border/70 bg-muted/25 px-4 py-4">
-                <p className="text-[12.5px] font-semibold text-foreground">
+              <div className="mt-4 flex min-w-0 items-center gap-2.5 rounded-2xl border border-border/70 bg-muted/25 px-3.5 py-3">
+                <Star className="h-4 w-4 shrink-0 text-amber-500" />
+                <p className="min-w-0 flex-1 text-[12.5px] text-muted-foreground">
                   How was your driver?
                 </p>
-                <div
-                  className="mt-2 grid grid-cols-5 items-center gap-1 sm:flex sm:flex-wrap sm:items-center sm:gap-1.5"
-                  role="radiogroup"
-                  aria-label="Rate your driver from 1 to 5 stars"
+                <Button
+                  type="button"
+                  id={`${pfx}open-review-btn`}
+                  size="sm"
+                  className="min-h-11 shrink-0 font-semibold lg:min-h-8"
+                  onClick={() => setReviewOpen(true)}
                 >
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <label
-                      key={n}
-                      className={`flex h-11 w-full min-w-0 cursor-pointer items-center justify-center rounded-full border border-transparent text-muted-foreground/45 outline-none transition-[color,background-color,border-color,transform] duration-150 hover:border-amber-500/20 hover:bg-amber-500/[0.06] hover:text-amber-500/70 has-[:focus-visible]:border-ring has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/60 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-card motion-safe:hover:-translate-y-px motion-safe:active:scale-95 motion-reduce:transition-none sm:w-11 sm:flex-none ${reviewRating >= n ? "text-amber-500" : ""}`}
-                    >
-                      <input
-                        type="radio"
-                        name={`${pfx}driver-rating`}
-                        value={n}
-                        checked={reviewRating === n}
-                        onChange={() => setReviewRating(n)}
-                        aria-label={`${n} star${n > 1 ? "s" : ""}`}
-                        className="sr-only"
-                      />
-                      <Star
-                        aria-hidden="true"
-                        className={`h-5 w-5 transition-[fill] duration-150 motion-reduce:transition-none ${reviewRating >= n ? "fill-amber-500" : ""}`}
-                      />
-                    </label>
-                  ))}
-                  {reviewRating > 0 && (
-                    <span className="col-span-5 mt-1 text-right text-[12px] font-semibold text-foreground sm:ml-1 sm:mt-0 sm:inline">
-                      {reviewRating}/5
-                    </span>
-                  )}
-                </div>
-                <Textarea
-                  id={`${pfx}review-comment`}
-                  aria-label="Review comment"
-                  value={reviewComment}
-                  onChange={(e) => setReviewComment(e.target.value)}
-                  placeholder="Leave a comment (optional)…"
-                  className="mt-3 min-h-[70px] text-base lg:text-sm"
-                  maxLength={500}
-                />
-                {reviewError && (
-                  <p role="alert" className="mt-2 text-[12px] text-destructive">
-                    {reviewError}
-                  </p>
-                )}
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    id={`${pfx}submit-review-btn`}
-                    size="sm"
-                     className="min-h-11 font-semibold lg:min-h-8"
-                    disabled={reviewBookingMutation.isPending || reviewRating < 1}
-                    onClick={() => void handleSubmitReview()}
-                  >
-                    {reviewBookingMutation.isPending ? "Submitting…" : "Submit review"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                     className="min-h-11 font-semibold text-muted-foreground lg:min-h-8"
-                    disabled={reviewBookingMutation.isPending}
-                    onClick={() => setReviewDismissed(true)}
-                  >
-                    Not now
-                  </Button>
-                </div>
+                  Leave feedback
+                </Button>
               </div>
             )}
 
@@ -2291,6 +2240,112 @@ export default function Dashboard() {
               onClick={() => void handleCancelRide()}
             >
               {cancelBookingMutation.isPending ? "Cancelling…" : "Cancel ride"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Passenger feedback. Same treatment as the cancel dialog: portalled to
+          <body> so it centres on the real viewport and paints above the map,
+          sheet and tab bar, instead of expanding inline under the trip summary
+          and pushing the rest of the completed-ride panel out of view. Mounted
+          here, once, because renderRideStatusSurface renders a desktop and a
+          mobile copy of that surface. */}
+      <Dialog
+        open={reviewOpen}
+        onOpenChange={(open) => {
+          // Don't let a dismissal race the in-flight submit, same reasoning as
+          // the cancel dialog: closing here would strand a review whose result
+          // the passenger never sees.
+          if (!open && reviewBookingMutation.isPending) return;
+          if (!open) setReviewError(null);
+          setReviewOpen(open);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <div className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/10">
+              <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
+            </div>
+            <DialogTitle>Rate your driver</DialogTitle>
+            <DialogDescription>
+              Your rating is shared with your driver and helps other riders choose
+              with confidence.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div
+            className="mt-4 grid grid-cols-5 items-center gap-1"
+            role="radiogroup"
+            aria-label="Rate your driver from 1 to 5 stars"
+          >
+            {[1, 2, 3, 4, 5].map((n) => (
+              <label
+                key={n}
+                className={`flex h-12 w-full min-w-0 cursor-pointer items-center justify-center rounded-full border border-transparent text-muted-foreground/45 outline-none transition-[color,background-color,border-color,transform] duration-150 hover:border-amber-500/20 hover:bg-amber-500/[0.06] hover:text-amber-500/70 has-[:focus-visible]:border-ring has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/60 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-card motion-safe:active:scale-95 motion-reduce:transition-none ${reviewRating >= n ? "text-amber-500" : ""}`}
+              >
+                <input
+                  type="radio"
+                  name="driver-rating-dialog"
+                  value={n}
+                  checked={reviewRating === n}
+                  onChange={() => setReviewRating(n)}
+                  aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                  className="sr-only"
+                />
+                <Star
+                  aria-hidden="true"
+                  className={`h-6 w-6 transition-[fill] duration-150 motion-reduce:transition-none ${reviewRating >= n ? "fill-amber-500" : ""}`}
+                />
+              </label>
+            ))}
+          </div>
+          {reviewRating > 0 && (
+            <p className="mt-2 text-center text-[12px] font-semibold text-foreground">
+              {reviewRating}/5
+            </p>
+          )}
+
+          <Textarea
+            id="review-comment-dialog"
+            aria-label="Review comment"
+            value={reviewComment}
+            onChange={(e) => setReviewComment(e.target.value)}
+            placeholder="Leave a comment (optional)…"
+            className="mt-3 min-h-[80px] text-base lg:text-sm"
+            maxLength={500}
+          />
+
+          {reviewError && (
+            <p role="alert" className="mt-2 text-[12px] text-destructive">
+              {reviewError}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              id="review-not-now-btn"
+              size="lg"
+              variant="outline"
+              className="w-full font-semibold sm:w-auto"
+              disabled={reviewBookingMutation.isPending}
+              onClick={() => {
+                setReviewDismissed(true);
+                setReviewOpen(false);
+              }}
+            >
+              Not now
+            </Button>
+            <Button
+              type="button"
+              id="submit-review-btn"
+              size="lg"
+              className="w-full font-semibold sm:w-auto"
+              disabled={reviewBookingMutation.isPending || reviewRating < 1}
+              onClick={() => void handleSubmitReview()}
+            >
+              {reviewBookingMutation.isPending ? "Submitting…" : "Submit review"}
             </Button>
           </DialogFooter>
         </DialogContent>
