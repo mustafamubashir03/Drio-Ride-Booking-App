@@ -6,14 +6,6 @@ import MobileSheet from "@/components/MobileSheet";
 import LocationPermission from "@/components/LocationPermission";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useRoute } from "@/hooks/use-route";
 import { useNavigationRoute } from "@/hooks/use-navigation-route";
@@ -84,29 +76,6 @@ const statusBadgeStyles: Record<DriverRide["status"], string> = {
   cancelled: "border-destructive/25 bg-destructive/10 text-destructive",
 };
 
-/**
- * Plain-language consequence of the pending status change, so the confirmation
- * explains what actually changes for the passenger rather than restating a
- * button label.
- */
-function statusChangeBlurb(ride: DriverRide | null): string {
-  if (!ride) return "This updates the status of your active ride.";
-  switch (ride.status) {
-    case "pending":
-      return "Accepting assigns this ride to you and lets the passenger know you're on the way. Other drivers stop being asked.";
-    case "confirmed":
-      return "Tells the passenger you've started heading to the pickup point.";
-    case "arriving":
-      return "Marks you as arrived at the pickup. The passenger sees this on their ride.";
-    case "arrived":
-      return "Starts the trip and begins the fare for the ride.";
-    case "in_progress":
-      return "Completes the ride, ends the trip and finalises your earnings.";
-    default:
-      return "This updates the status of your active ride.";
-  }
-}
-
 function toLocation(place: DriverRide["source"]): SelectedLocation {
   return {
     name: place.name ?? "",
@@ -159,11 +128,6 @@ export default function DriverHome() {
   } = useDriverRatingQuery();
   const transitionMutation = useTransitionDriverRideMutation();
   const [actionError, setActionError] = useState<string | null>(null);
-  // Drives the top-level confirmation dialog for a ride status change. Kept as a
-  // separate flag (rather than calling handleRideAction directly) so every
-  // status change is confirmed the same way the passenger's cancel is, instead of
-  // firing from a button sitting at the bottom of a scrollable panel.
-  const [statusConfirmOpen, setStatusConfirmOpen] = useState(false);
 
   // GPS stays outside React Query entirely: it is a realtime stream pushed over
   // the socket on a throttle, not server state that can be cached or invalidated.
@@ -341,7 +305,6 @@ useEffect(() => {
     const action = actionForStatus(activeRide.status);
     if (!action) return;
     setActionError(null);
-    setStatusConfirmOpen(false);
     try {
       const updated = await transitionMutation.mutateAsync({
         bookingId: activeRide._id,
@@ -464,7 +427,7 @@ const notRegistered = online && !registered;
                     className="mt-3.5 w-full rounded-2xl hover:scale-[1.01] motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
                     variant={actionForStatus(activeRide.status)!.variant}
                     size="lg"
-                    onClick={() => setStatusConfirmOpen(true)}
+                    onClick={() => void handleRideAction()}
                     disabled={transitionMutation.isPending}
                   >
                     <Radio className="h-4 w-4" />
@@ -819,56 +782,7 @@ const notRegistered = online && !registered;
           </AnimatePresence>
       </MobileSheet>
 
-      {/* Top-level confirmation for a ride status change. Portalled to <body> by
-          DialogContent, so it centres on the real viewport and paints above the
-          map, the sheet and the tab bar instead of appearing inside the scrollable
-          panel. Mirrors the passenger's cancel dialog: modal, focus-trapped, and
-          the ride panel behind it cannot be pressed while the choice is open. */}
-      <Dialog open={statusConfirmOpen} onOpenChange={setStatusConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <div
-              className={`mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                activeRide ? statusBadgeStyles[activeRide.status] : ""
-              }`}
-            >
-              <Radio className="h-4 w-4" />
-            </div>
-            <DialogTitle>
-              {activeRide
-                ? `${actionForStatus(activeRide.status)?.label ?? "Update status"}?`
-                : "Update ride status?"}
-            </DialogTitle>
-            <DialogDescription>
-              {statusChangeBlurb(activeRide)}
-            </DialogDescription>
-          </DialogHeader>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              className="w-full font-semibold sm:w-auto"
-              disabled={transitionMutation.isPending}
-              onClick={() => setStatusConfirmOpen(false)}
-            >
-              Keep it as is
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              className="w-full font-semibold sm:w-auto"
-              disabled={transitionMutation.isPending}
-              onClick={() => void handleRideAction()}
-            >
-              {transitionMutation.isPending
-                ? "Updating…"
-                : actionForStatus(activeRide?.status ?? "completed")?.label ?? "Confirm"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </MotionPage>
   );
 }
