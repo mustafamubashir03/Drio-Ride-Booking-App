@@ -10,6 +10,7 @@ import { logForwardedClientIpMiddleware } from './middlewares/client-ip.middlewa
 import placesRouter from './routers/v1/places.router';
 import routesRouter from './routers/routes.router';
 import { maybeRunSearchSweep } from './services/driver-search.service';
+import { shouldTriggerSearchSweep } from './lib/search-trigger';
 import type { toNodeHandler as toNodeHandlerFactory } from "better-auth/node" with { "resolution-mode": "import" };
 import { getAuth, client } from "./lib/auth";
 
@@ -98,7 +99,7 @@ app.use(attachCorrelationIdMiddleware);
  * Deliberately not awaited: dispatch latency must never depend on a sweep.
  */
 app.use((req, res, next) => {
-    if (/^\/api\/v\d\/(passenger|driver)(\/|$)/.test(req.path)) {
+    if (shouldTriggerSearchSweep(req.path)) {
         void maybeRunSearchSweep(`traffic:${req.method}`);
     }
     next();

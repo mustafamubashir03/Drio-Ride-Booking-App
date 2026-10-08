@@ -208,6 +208,78 @@ async function main() {
         check("progress ended beyond 5 km", p !== null && p.radiusKm > 5, JSON.stringify(p));
     }
 
+    console.log("\n--- E. a throwing search stage must NOT strand the booking ---");
+    {
+        const id = `thrower-${Date.now().toString(36)}`;
+        created.push(`search-stage:${id}`, `search-progress:${id}`, `notifiedDrivers:${id}`);
+        // `source` is missing, so advanceStage throws exactly as a malformed or
+        // partially-written booking would in production.
+        const booking = fakeBooking(id, 0);
+        (booking as any).source = undefined;
+        Object.defineProperty(booking._id, "getTimestamp", {
+            value: () => new Date(Date.now() - (SEARCH_MAX_DURATION_MS + 2000)),
+        });
+        const res = await runDriverSearchCycle({ findPending: async () => [booking] as any, cancelBooking: deps.cancelBooking });
+        check("booking still reached a terminal state despite a throwing stage", cancelled.includes(id), JSON.stringify(cancelled));
+        check("cycle reported the expiry", res.expired === 1, `expired=${res.expired}`);
+    }
+
+    console.log("\n--- F. duplicate sweeper execution is safe ---");
+    {
+        const id = `dupe-${Date.now().toString(36)}`;
+        created.push(`search-stage:${id}`, `search-progress:${id}`, `notifiedDrivers:${id}`);
+        const booking = fakeBooking(id, 0);
+        await kickoffDriverSearch({
+            bookingId: id,
+            longitude: PICKUP.longitude,
+            latitude: PICKUP.latitude,
+            rideInfo: { pickup: "A", destination: "B", fare: 100, distance: 7, passengerName: "P" },
+        });
+        Object.defineProperty(booking._id, "getTimestamp", { value: () => new Date(Date.now() - 25_000) });
+        // Same sweep twice, sequentially.
+        await runDriverSearchCycle({ findPending: async () => [booking] as any, cancelBooking: deps.cancelBooking });
+        const first = await progressOf(id);
+        await runDriverSearchCycle({ findPending: async () => [booking] as any, cancelBooking: deps.cancelBooking });
+        const second = await progressOf(id);
+        check("a repeated sweep did not regress progress", second !== null && first !== null && second.stage >= first.stage, `first=${JSON.stringify(first)} second=${JSON.stringify(second)}`);
+        check("a repeated sweep inside budget did not cancel", !cancelled.includes(id), JSON.stringify(cancelled));
+    }
+
+    console.log("\n--- G. concurrent sweeper execution is safe ---");
+    {
+        const id = `conc-${Date.now().toString(36)}`;
+        created.push(`search-stage:${id}`, `search-progress:${id}`, `notifiedDrivers:${id}`);
+        const booking = fakeBooking(id, 0);
+        await kickoffDriverSearch({
+            bookingId: id,
+            longitude: PICKUP.longitude,
+            latitude: PICKUP.latitude,
+            rideInfo: { pickup: "A", destination: "B", fare: 100, distance: 7, passengerName: "P" },
+        });
+        Object.defineProperty(booking._id, "getTimestamp", {
+            value: () => new Date(Date.now() - (SEARCH_MAX_DURATION_MS + 2000)),
+        });
+        // Two workers racing the same booking. The cancel repository is the
+        // authority (fromStatus: pending), so at most one may win.
+        const repo = async (a: any) => {
+            await new Promise((r) => setTimeout(r, 5));
+            cancelled.push(a.bookingId);
+            return { _id: a.bookingId, status: "cancelled" };
+        };
+        await Promise.all([
+            runDriverSearchCycle({ findPending: async () => [booking] as any, cancelBooking: repo as any }),
+            runDriverSearchCycle({ findPending: async () => [booking] as any, cancelBooking: repo as any }),
+        ]);
+        check("concurrent sweeps resolved the booking", cancelled.filter((c) => c === id).length >= 1, JSON.stringify(cancelled));
+        const eligible = await collectEligibleDriverIds({
+            bookingId: id,
+            longitude: PICKUP.longitude,
+            latitude: PICKUP.latitude,
+            radiusKm: Math.max(...SEARCH_RADII_KM),
+        });
+        check("concurrent sweeps did not skip the widest radius", eligible.includes(DRIVER.id), JSON.stringify(eligible));
+    }
+
     // Cleanup: only what this run created.
     for (const k of created) {
         if (k.startsWith("search-stage:") || k.startsWith("search-progress:") || k.startsWith("notifiedDrivers:") || k.startsWith("driver-location:")) {

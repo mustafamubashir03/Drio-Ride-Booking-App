@@ -1,4 +1,8 @@
 services:
+  # Legacy/unused. Retained so an existing instance is not destroyed by a Blueprint
+  # apply, but NO service references it any more: production Redis state (driver
+  # GEO, freshness, socket mapping, search stage, notified drivers) must live in
+  # the single canonical Redis configured via each service's REDIS_URI secret.
   - type: keyvalue
     name: drio-redis
     region: oregon
@@ -21,11 +25,23 @@ services:
         value: production
       - key: MONGO_URI
         sync: false
-      - key: REDIS_URI
-        fromService:
-          type: keyvalue
-          name: drio-redis
-          property: connectionString
+      # REDIS_URI is intentionally NOT declared here.
+      #
+      # This blueprint previously wired Render services to the internal
+      # `drio-redis` Key Value instance, while every deployed service actually
+      # runs against the canonical managed Redis (configured per-service as a
+      # secret in the Render dashboard). Because a blueprint re-syncs the values
+      # it declares, any future Blueprint deployment would have silently
+      # repointed production at a different Redis - splitting driver GEO/freshness
+      # (socket server) from the search stage and matching (main API), which
+      # presents as "no driver found" for drivers who are online.
+      #
+      # Omitting the key is the safe fix: Render only manages environment
+      # variables that the blueprint declares, so an undeclared REDIS_URI keeps
+      # the working dashboard value and can no longer be overwritten.
+      # GET /api/v1/ping/diagnostics on each service reports provider/host/port/db
+      # and a fingerprint, so a divergence is detectable with one unauthenticated
+      # request instead of by inference.
       - key: BETTER_AUTH_URL
         value: https://drio-ride-booking-app.onrender.com
       - key: BETTER_AUTH_SECRET
@@ -79,11 +95,9 @@ services:
           type: web
           name: drio-server
           envVarKey: RENDER_EXTERNAL_URL
-      - key: REDIS_URI
-        fromService:
-          type: keyvalue
-          name: drio-redis
-          property: connectionString
+      # See the note on drio-server above: REDIS_URI is deliberately not
+      # declared, so a Blueprint deploy cannot repoint this service away from the
+      # canonical production Redis.
       - key: TRUSTED_ORIGINS
         value: https://drio-ride-booking-app.onrender.com,http://localhost:5173,http://127.0.0.1:5173
 
