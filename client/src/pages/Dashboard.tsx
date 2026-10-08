@@ -7,6 +7,14 @@ import LocationPermission, { type LocationUiState } from "@/components/LocationP
 import PlaceSearchField from "@/components/PlaceSearchField";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRoute } from "@/hooks/use-route";
@@ -833,7 +841,11 @@ export default function Dashboard() {
   // this poll without redesigning the UI state.
   const bookingPollSeq = useRef(0);
   useEffect(() => {
-    if (!rideBooked || !bookingId) return;
+    // Once a cancellation has been applied there is nothing left to watch, so the
+    // interval is torn down on the same tick the status flips rather than up to
+    // 4s later. Deliberately not keyed on `cancelOpen`: dismissing the
+    // confirmation dialog must leave the search polling exactly as it was.
+    if (!rideBooked || !bookingId || bookingCancelledAt) return;
     let stopped = false;
     let pollRunning = false;
     let pollTimer: ReturnType<typeof window.setInterval> | undefined;
@@ -895,7 +907,7 @@ export default function Dashboard() {
     void poll();
 
     return stopPolling;
-  }, [rideBooked, bookingId, refetchBookings]);
+  }, [rideBooked, bookingId, bookingCancelledAt, refetchBookings]);
 
   // Reload persistence: on mount, restore an in-flight booking (pending →
   // in_progress) so a page refresh does not strand the passenger. Terminal
@@ -1214,21 +1226,27 @@ export default function Dashboard() {
               </Badge>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-              <p className="text-[11.5px] text-muted-foreground">
-                {searchProgress
-                  ? `Search radius expanded to ${searchProgress.radiusKm} km. We'll keep looking for a nearby driver.`
-                  : "We'll keep searching nearby and expand the radius if needed."}
-              </p>
-              <button
-                type="button"
-                id={`${pfx}cancel-search-btn`}
-                onClick={() => setCancelOpen(true)}
-                className="ml-auto rounded-md text-[12px] font-semibold text-destructive outline-none transition-colors hover:text-destructive/80 hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none"
-              >
-                Cancel search
-              </button>
-            </div>
+            {/* Cancel is the one action the passenger must always be able to
+                reach, so it sits directly under the status headline rather than
+                after the ride card and trip details. Nothing here depends on
+                scrolling: on mobile this lands well inside the sheet's peek
+                height, and on desktop inside the status strip. */}
+            <Button
+              type="button"
+              id={`${pfx}cancel-search-btn`}
+              variant="destructive"
+              size="lg"
+              className="mt-3 w-full border border-destructive/25 text-[14px] font-semibold"
+              onClick={() => setCancelOpen(true)}
+            >
+              Cancel ride
+            </Button>
+
+            <p className="mt-2.5 text-[11.5px] text-muted-foreground">
+              {searchProgress
+                ? `Search radius expanded to ${searchProgress.radiusKm} km. We'll keep looking for a nearby driver.`
+                : "We'll keep searching nearby and expand the radius if needed."}
+            </p>
 
             <div className="mt-4 flex min-w-0 items-center gap-3 rounded-2xl border border-border/70 bg-muted/25 px-3.5 py-3">
               <Avatar size="sm">
@@ -1283,6 +1301,23 @@ export default function Dashboard() {
                 {bookingStatus}
               </Badge>
             </div>
+
+            {/* Same rule as the searching state: cancel is offered directly under
+                the headline, never after the driver card, ETA and trip details. */}
+            {bookingStatus === "confirmed" ||
+            bookingStatus === "arriving" ||
+            bookingStatus === "arrived" ? (
+              <Button
+                type="button"
+                id={`${pfx}cancel-ride-btn`}
+                variant="destructive"
+                size="lg"
+                className="mt-3 w-full border border-destructive/25 text-[14px] font-semibold"
+                onClick={() => setCancelOpen(true)}
+              >
+                Cancel ride
+              </Button>
+            ) : null}
 
             {bookingDriverInfo ? (
               <div className="mt-4 flex min-w-0 items-center gap-3 rounded-2xl border border-border/70 bg-muted/25 px-3.5 py-3">
@@ -1357,19 +1392,6 @@ export default function Dashboard() {
               route={route}
               rideLabel={`${selectedVehicle.label} · ${rideFareLabel}`}
             />
-
-            {bookingStatus === "confirmed" ||
-              bookingStatus === "arriving" ||
-              bookingStatus === "arrived" ? (
-              <button
-                type="button"
-                id={`${pfx}cancel-ride-btn`}
-                onClick={() => setCancelOpen(true)}
-                className="mt-4 rounded-md text-[12px] font-semibold text-destructive outline-none transition-colors hover:text-destructive/80 hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none"
-              >
-                Cancel ride
-              </button>
-            ) : null}
           </motion.div>
         )}
 
@@ -1577,88 +1599,7 @@ export default function Dashboard() {
           </motion.div>
         )}
 
-        {rideBooked && cancelOpen && (
-          <motion.div
-            {...motionStateProps({ variants: page, reduced })}
-            key="cancel-confirmation"
-            className={panelClass}
-          >
-            <div className="flex flex-wrap items-center gap-3">
-              <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${statusIconStyles.cancelled}`}
-              >
-                <X className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[15px] font-semibold text-foreground">
-                  Cancel this ride?
-                </p>
-                <p className="text-[12.5px] text-muted-foreground">
-                  {findingDriver
-                    ? "This stops the driver search for this request."
-                    : "The driver will be notified and you won't be charged."}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-1.5">
-              {cancelReasons.map((reason) => (
-                <button
-                  key={reason.value}
-                  type="button"
-                  onClick={() => setCancelReason(reason.value)}
-                  aria-pressed={cancelReason === reason.value}
-                  className={`flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left outline-none transition-[color,background-color,border-color,box-shadow,transform] focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-card motion-safe:active:scale-[0.99] motion-reduce:transition-none ${cancelReason === reason.value
-                      ? "border-destructive/35 bg-destructive/[0.07]"
-                      : "border-border/70 bg-muted/25 hover:border-ring/30 hover:bg-muted/45"
-                    }`}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`h-3.5 w-3.5 shrink-0 rounded-full border transition-colors motion-reduce:transition-none ${cancelReason === reason.value
-                        ? "border-destructive bg-destructive"
-                        : "border-muted-foreground/40"
-                      }`}
-                  />
-                  <span className="text-[13px] font-medium text-foreground">
-                    {reason.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {cancelError && (
-              <p role="alert" className="mt-3 break-words text-[12px] text-destructive [overflow-wrap:anywhere]">
-                {cancelError}
-              </p>
-            )}
-
-            <div className="mt-4 flex items-center gap-2">
-              <Button
-                type="button"
-                id={`${pfx}confirm-cancel-ride-btn`}
-                size="sm"
-                variant="destructive"
-                className="font-semibold"
-                disabled={cancelBookingMutation.isPending}
-                onClick={() => void handleCancelRide()}
-              >
-                {cancelBookingMutation.isPending ? "Cancelling…" : "Cancel ride"}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="font-semibold text-muted-foreground"
-                disabled={cancelBookingMutation.isPending}
-                onClick={() => setCancelOpen(false)}
-              >
-                Keep ride
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </AnimatePresence>
     );
   };
 
@@ -2251,6 +2192,101 @@ export default function Dashboard() {
         </div>
       </MotionPage>
       <BottomNav activeTab={activeTab} onTabChange={handleTabClick} />
+
+      {/* One dialog for the whole page, rendered outside `renderRideStatusSurface`
+          so the desktop and mobile copies of that surface do not each mount a
+          dialog. Portalled to <body> by DialogContent, so it always centres on
+          the real viewport and paints above the map, the bottom sheet and the
+          bottom tab bar. Modal by default: focus is trapped and the searching
+          UI behind it cannot be pressed while the choice is open. */}
+      <Dialog
+        open={cancelOpen}
+        onOpenChange={(open) => {
+          // Never let a dismissal race the in-flight request: closing here would
+          // strand the passenger with a cancellation they cannot see the result of.
+          if (!open && cancelBookingMutation.isPending) return;
+          if (!open) setCancelError(null);
+          setCancelOpen(open);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <div
+              className={`mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${statusIconStyles.cancelled}`}
+            >
+              <X className="h-4 w-4" />
+            </div>
+            <DialogTitle>Cancel this ride?</DialogTitle>
+            <DialogDescription>
+              {findingDriver
+                ? "Are you sure you want to cancel your ride request? This stops the driver search immediately."
+                : "Are you sure you want to cancel your ride? The driver will be notified and you won't be charged."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-1.5">
+            {cancelReasons.map((reason) => (
+              <button
+                key={reason.value}
+                type="button"
+                onClick={() => setCancelReason(reason.value)}
+                aria-pressed={cancelReason === reason.value}
+                className={`flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left outline-none transition-[color,background-color,border-color,box-shadow,transform] focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-card motion-safe:active:scale-[0.99] motion-reduce:transition-none ${
+                  cancelReason === reason.value
+                    ? "border-destructive/35 bg-destructive/[0.07]"
+                    : "border-border/70 bg-muted/25 hover:border-ring/30 hover:bg-muted/45"
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`h-3.5 w-3.5 shrink-0 rounded-full border transition-colors motion-reduce:transition-none ${
+                    cancelReason === reason.value
+                      ? "border-destructive bg-destructive"
+                      : "border-muted-foreground/40"
+                  }`}
+                />
+                <span className="text-[13px] font-medium text-foreground">
+                  {reason.label}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {cancelError && (
+            <p
+              role="alert"
+              className="mt-3 break-words text-[12px] text-destructive [overflow-wrap:anywhere]"
+            >
+              {cancelError}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              id="confirm-keep-searching-btn"
+              size="lg"
+              variant="outline"
+              className="w-full font-semibold sm:w-auto"
+              disabled={cancelBookingMutation.isPending}
+              onClick={() => setCancelOpen(false)}
+            >
+              {findingDriver ? "Keep searching" : "Keep ride"}
+            </Button>
+            <Button
+              type="button"
+              id="confirm-cancel-ride-btn"
+              size="lg"
+              variant="destructive"
+              className="w-full border border-destructive/25 font-semibold sm:w-auto"
+              disabled={cancelBookingMutation.isPending}
+              onClick={() => void handleCancelRide()}
+            >
+              {cancelBookingMutation.isPending ? "Cancelling…" : "Cancel ride"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
