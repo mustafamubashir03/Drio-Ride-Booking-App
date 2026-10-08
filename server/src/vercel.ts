@@ -26,6 +26,13 @@ const ensureReady = () => {
             await connectMongoose();
             await connectRedis();
             await seedRbac();
+            // Surfaced by /api/v1/ping/diagnostics so it is externally obvious
+            // that this deployment serves the API and creates bookings, but does
+            // NOT own the search sweeper. If a search ever stops advancing, this
+            // is the field that explains why.
+            process.env.SWEEPER_ROLE = "api-only";
+            process.env.SWEEPER_STARTED_AT = new Date().toISOString();
+            process.env.SWEEPER_STARTED_BY = `vercel:${process.env.VERCEL_REGION || "unknown"}`;
         })().catch((err) => {
             // Drop the cached rejection so a later cold invocation can retry
             // instead of replaying the failure for the life of the instance.

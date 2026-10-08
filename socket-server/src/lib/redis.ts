@@ -1,9 +1,16 @@
 import { createClient } from "redis";
 import { dbConfig } from "../config/db.config";
 import logger from "../config/logger.config";
+import { describeRedisUri, formatRedisIdentity } from "./redis-identity";
+
+export const redisIdentity = describeRedisUri(dbConfig.redisUri);
 
 const redisClient = createClient({
     url: dbConfig.redisUri,
+    // node-redis negotiates RESP3 via HELLO, which Redis < 6 does not implement.
+    // Local/dev instances (and the Windows build in .env) are Redis 5, so allow
+    // pinning RESP2 without touching the negotiated default.
+    ...(process.env.REDIS_RESP === "2" ? { RESP: 2 as const } : {}),
     socket: {
         reconnectStrategy: (retries: number) => {
             const delay = Math.min(retries * 50, 2000);
@@ -16,6 +23,10 @@ redisClient.on("error", (err: Error) => logger.error("Redis Client Error", err))
 
 export async function connectRedis() {
     try {
+        // Logged BEFORE connecting so a failed connection still leaves a record of
+        // which datastore was attempted.
+        logger.info(formatRedisIdentity("socket-server", redisIdentity));
+        console.log(formatRedisIdentity("socket-server", redisIdentity));
         await redisClient.connect();
         
         // Phase 1: Redis ID logging

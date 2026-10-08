@@ -19,6 +19,17 @@ connectDB().then(async () => {
     // Periodic driver-search cycle: widens the dispatch radius as bookings
     // age and expires any that run out of search budget (no_driver_found).
     searchSweeper = startDriverSearchSweeper(SEARCH_SWEEP_INTERVAL_MS);
+
+    // Surfaced by /api/v1/ping/diagnostics. A booking that expires long after
+    // its search budget means this interval stopped running for a while (a
+    // sleeping instance, a restart, a crash), so the boot time of the process
+    // that owns the sweeper is the first thing to check.
+    process.env.SWEEPER_ROLE = "api+sweeper";
+    process.env.SWEEPER_STARTED_AT = new Date().toISOString();
+    process.env.SWEEPER_STARTED_BY = `pid:${process.pid}`;
+    logger.info(
+        `[SEARCH] sweeper started pid=${process.pid} intervalMs=${SEARCH_SWEEP_INTERVAL_MS} startedAt=${process.env.SWEEPER_STARTED_AT}`,
+    );
     // Capture the http.Server so we can close it gracefully on shutdown.
     server = app.listen(serverConfig.PORT, "0.0.0.0", () => {
         logger.info(`Server is running on port ${serverConfig.PORT}`);

@@ -1,6 +1,9 @@
 import { createClient } from "redis";
 import { dbConfig } from "../config/db.config";
 import logger from "../config/logger.config";
+import { describeRedisUri, formatRedisIdentity } from "./redis-identity";
+
+export const redisIdentity = describeRedisUri(dbConfig.redisUri);
 
 const redisClient = createClient({
     url: dbConfig.redisUri,
@@ -19,6 +22,10 @@ redisClient.on("ready", () => console.log("[Redis] ready, isOpen:", redisClient.
 export async function connectRedis() {
     try {
         console.log("[Redis] connectRedis() called");
+        // Logged BEFORE connecting: if the connection itself fails, the identity
+        // of what we tried to reach is still on record, which is what makes a
+        // deployment misconfiguration diagnosable after the fact.
+        console.log(formatRedisIdentity("main-api", redisIdentity));
         await redisClient.connect();
         console.log("[Redis] connected, isOpen:", redisClient.isOpen, "isReady:", redisClient.isReady);
         
