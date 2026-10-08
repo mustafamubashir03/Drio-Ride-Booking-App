@@ -1,4 +1,5 @@
 import { Types } from "mongoose";
+import logger from "../config/logger.config";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../utils/errors/app.error";
 import {
     assignBookingToDriverRepository,
@@ -230,10 +231,23 @@ export const confirmBookingService = async ({
         const latest = await findDriverBookingByIdRepository(bookingId);
         if (latest && latest.driver && toObjectId(latest.driver).toString() === driverId) {
             await setDriverActiveRideService(driverId, bookingId);
+            logger.info(
+                `[ACCEPT] booking=${bookingId} driver=${driverId} atomic=false alreadyHeldByThisDriver`,
+            );
             return serializeDriverRide(latest);
         }
+        logger.warn(
+            `[ACCEPT] booking=${bookingId} driver=${driverId} atomic=false rejected=claimed_by_other_or_gone`,
+        );
         throw new ConflictError("Ride is no longer available");
     }
+
+    // Acceptance is the one transition that must be exactly-once, so record the
+    // atomic outcome explicitly rather than leaving it to be inferred from the
+    // passenger notification further down.
+    logger.info(
+        `[ACCEPT] booking=${bookingId} driver=${driverId} atomic=true status=${claimed.status}`,
+    );
 
     await setDriverActiveRideService(driverId, bookingId);
 
