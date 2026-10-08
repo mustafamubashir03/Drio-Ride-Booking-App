@@ -332,27 +332,32 @@ export const runDriverSearchCycle = async (
     let advanced = 0;
     let expired = 0;
 
-    // Keep the GEO index honest: members with no freshness key are users who
-    // stopped streaming (including passengers who previously drove).
-    await reapStaleGeoMembersService();
+    const finalStage = SEARCH_RADII_KM.length - 1;
 
     for (const booking of bookings) {
         if (hasDriver(booking)) continue; // defensive: only driver:null qualifies
         const bookingId = String(booking._id);
         const elapsedMs = Date.now() - booking._id.getTimestamp().getTime();
 
-        const currentStage = await getSearchStageService(bookingId);
-        const finalStage = SEARCH_RADII_KM.length - 1;
-        if (
-            elapsedMs >= SEARCH_MAX_DURATION_MS ||
-            (elapsedMs >= SEARCH_MAX_DURATION_MS - SEARCH_STAGE_INTERVAL_MS && currentStage >= finalStage)
-        ) {
-            const result = await expireBookingSearch(booking, { cancelBooking });
-            if (result) expired++;
-            continue;
-        }
-
+        // The stage is DERIVED FROM ELAPSED TIME, not counted by a timer, so a
+        // process that slept through the budget still resolves the correct
+        // stage on wake. `search-stage` records how far the ladder actually got
+        // (for observability and so a re-run never re-searches a radius), but
+        // correctness never depends on it: a missing key reads as -1 and is
+        // clamped to 0, never treated as "restart from the beginning".
+        const persisted = await getSearchStageService(bookingId);
+        const currentStage = persisted < 0 ? 0 : Math.min(persisted, finalStage);
         const targetStage = firstStageFromElapsed(elapsedMs);
+
+        // Catch up EVERY stage the sleep spanned BEFORE considering expiry.
+        //
+        // This ordering is the fix for the production failure. Expiry used to be
+        // checked first, so a sweep that woke late found the booking already
+        // past budget and cancelled it without ever querying 15/25/45/50 km. A
+        // driver sitting 7 km away was inside the 15 km stage the whole time and
+        // was never notified, so the ride always died as "no driver found".
+        // Deriving the stage from elapsed time makes the ladder converge no
+        // matter when (or whether) the timer happened to be alive.
         for (let stage = currentStage + 1; stage <= targetStage; stage++) {
             try {
                 const notified = await advanceStage(booking, stage);
@@ -369,6 +374,17 @@ export const runDriverSearchCycle = async (
                 break;
             }
         }
+
+        // Terminal resolution once the budget is spent. This deliberately does
+        // NOT depend on the ladder having completed: a stage that throws (bad
+        // stored coordinates, a Redis error) must not be able to strand a
+        // booking in "searching" forever. The catch-up loop above has already
+        // given every due radius its chance, so expiring here cannot pre-empt a
+        // wider search - it only ends a search that has run out of time.
+        if (elapsedMs >= SEARCH_MAX_DURATION_MS) {
+            const result = await expireBookingSearch(booking, { cancelBooking });
+            if (result) expired++;
+        }
     }
     if (bookings.length > 0) {
         logger.info(`[SEARCH] sweep: scanned=${bookings.length} advanced=${advanced} expired=${expired}`);
@@ -384,21 +400,20 @@ export const startDriverSearchSweeper = (intervalMs: number) => {
 
 // ── Sweep scheduling ──────────────────────────────────────────────────────
 //
-// Why this exists: the sweeper used to be a bare interval on a Render free-tier
-// web service, which the platform freezes when idle. While frozen, no search
-// advanced. Booking creation still ran kickoff on Vercel (always on), but only
-// the 5 km stage - so a driver just beyond the initial radius was never
-// considered, and the first sweep that eventually ran found the booking already
-// past its budget and expired it immediately, skipping stages 1-4 entirely.
-// That is the production failure: "no driver found" for a driver who was online
-// with fresh GEO, sitting 7.28 km away inside the 15 km stage.
+// The ladder itself is derived from booking age (see runDriverSearchCycle), so a
+// timer is only a TRIGGER, never the source of truth. A sweep that runs late, or
+// twice, or never runs, converges to the same stage from elapsed time and the
+// notified-driver set. That is what makes behaviour deterministic across the
+// Vercel API, the Render sweeper and the passenger's polling - none of which can
+// be relied on to be alive on a schedule.
 //
-// Two changes make that impossible:
-//   1. `runDriverSearchCycle` takes a cross-process lock, so any number of
-//      processes may trigger a sweep but only one ever runs it.
-//   2. Sweeps are also driven by real API traffic (throttled). The passenger
-//      polls every few seconds while searching, so the ladder keeps advancing
-//      even if the dedicated interval is frozen or the process was restarted.
+// The lock is therefore an optimisation to avoid duplicated work, NOT a
+// correctness requirement - which is precisely why its TTL must stay far below
+// the search budget. It used to be 10x the sweep interval (50s = the entire
+// budget), so a process that died holding it froze ALL searching system-wide for
+// a full budget and every booking in flight expired untouched.
+
+const SWEEP_LOCK_TTL_MS = 10_000;
 
 let lastSweepStartedAt = 0;
 let sweepInFlight = false;
@@ -413,10 +428,7 @@ export const maybeRunSearchSweep = async (trigger: string) => {
     sweepInFlight = true;
 
     const owner = `${SWEEP_OWNER_PREFIX}-${now}`;
-    const acquired = await acquireSearchSweepLockService(
-        owner,
-        SEARCH_SWEEP_INTERVAL_MS * 10,
-    );
+    const acquired = await acquireSearchSweepLockService(owner, SWEEP_LOCK_TTL_MS);
     if (!acquired) {
         // Another process is sweeping right now; its work covers ours.
         sweepInFlight = false;
@@ -437,6 +449,10 @@ export const maybeRunSearchSweep = async (trigger: string) => {
     finally {
         await releaseSearchSweepLockService(owner);
         sweepInFlight = false;
+        // GEO hygiene runs AFTER the lock is released. It is unrelated to search
+        // correctness, and doing it inside the lock only extended how long every
+        // other process had to wait for a sweep.
+        void reapStaleGeoMembersService().catch(() => undefined);
     }
 };
 

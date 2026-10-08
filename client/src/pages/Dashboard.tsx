@@ -424,7 +424,15 @@ const [reviewOpen, setReviewOpen] = useState(false);
       const next = data.status ? (data.status as BookingStatus) : null;
       if (next) setBookingStatus(next);
       if (data.driverId) setBookingDriverId(data.driverId);
-      if (data.searchProgress) setSearchProgress(data.searchProgress);
+      // Radius only ever widens. A late or replayed update must never drag the
+      // passenger back to a radius the search has already passed - otherwise a
+      // single out-of-order event presents as "stuck at 5 km" even though the
+      // backend advanced correctly.
+      if (data.searchProgress) {
+        setSearchProgress((prev) =>
+          prev && data.searchProgress!.stage < prev.stage ? prev : data.searchProgress!,
+        );
+      }
       if (data.cancelledBy) setBookingCancelledBy(data.cancelledBy);
       if (next === "cancelled") {
         setSearchProgress(null);
@@ -892,8 +900,10 @@ const [reviewOpen, setReviewOpen] = useState(false);
           // source, but if it is down or reconnecting the passenger would
           // otherwise watch a stale "Searching" while the backend had already
           // widened the radius. These are the numbers the sweeper actually
-          // queried, not a client-side guess.
-          setSearchProgress(current.searchProgress);
+          // queried, not a client-side guess. Applied monotonically for the
+          // same reason as the socket path: the radius must never rewind.
+          const next = current.searchProgress;
+          setSearchProgress((prev) => (prev && next.stage < prev.stage ? prev : next));
         }
         // Recover the driver's most recent position (Redis, 30s TTL) so the
         // live marker survives a reload until the socket stream resumes.

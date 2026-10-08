@@ -83,22 +83,22 @@ app.use(attachCorrelationIdMiddleware);
 /**
  * Drive the search sweep from real traffic as well as from the sweeper interval.
  *
- * Radius expansion and search expiry were owned exclusively by a setInterval on
- * the Render service, which the platform freezes when idle. A frozen sweeper
- * meant a booking could sit at stage 0 until some later sweep found it already
- * past budget and expired it outright, skipping every wider radius - the
- * production "no driver found" for an online driver 7.28 km away, inside the
- * 15 km stage.
+ * Search correctness does not depend on this (the ladder is derived from booking
+ * age), but it makes progression prompt and guarantees terminal resolution even
+ * if the Render sweeper is frozen by the platform: the passenger polls its
+ * bookings every few seconds while searching, so that polling is a reliable
+ * heartbeat.
  *
- * The passenger polls its bookings every few seconds while searching, so
- * ordinary traffic is a reliable heartbeat. `maybeRunSearchSweep` is throttled
- * and guarded by a cross-process Redis lock, so extra triggers cost one
- * timestamp comparison and cannot cause duplicate notifications.
+ * NOTE the path matching: this middleware is mounted at the app root, so
+ * `req.path` is the FULL path (`/api/v1/passenger/bookings`), not the path
+ * relative to the v1 router. The previous version compared against
+ * "/passenger" and therefore never matched anything - the traffic trigger was
+ * dead code and every search depended solely on the Render interval.
  *
  * Deliberately not awaited: dispatch latency must never depend on a sweep.
  */
 app.use((req, res, next) => {
-    if (req.path.startsWith("/passenger") || req.path.startsWith("/driver")) {
+    if (/^\/api\/v\d\/(passenger|driver)(\/|$)/.test(req.path)) {
         void maybeRunSearchSweep(`traffic:${req.method}`);
     }
     next();

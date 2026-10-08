@@ -161,15 +161,19 @@ export const reapStaleGeoMembersService = async (limit = 50): Promise<number> =>
     let removed = 0;
     try {
         const members = await redisClient.zRange("drivers", 0, limit * 4 - 1);
-        for (const member of members) {
-            if (removed >= limit) break;
-            const fresh = await redisClient.exists(`driver-location:${member}`);
-            if (fresh === 0) {
-                await redisClient.zRem("drivers", member);
-                removed++;
-                logger.info(`[GEO] reaped stale member driverId=${member} (no freshness key)`);
-            }
-        }
+        if (members.length === 0) return 0;
+        // One batched read instead of one EXISTS per member. The previous
+        // round-trip-per-member version could issue >200 sequential calls to a
+        // remote Redis, holding the search-sweep lock for many seconds, which
+        // starved the very searches the reaper was meant to keep healthy.
+        const flags = await redisClient.mGet(members.map((m) => `driver-location:${m}`));
+        const stale = members.filter((_, i) => !flags[i]);
+        if (stale.length === 0) return 0;
+        // ZREM is variadic: one call, bounded to the limit.
+        const doomed = stale.slice(0, limit);
+        await redisClient.zRem("drivers", doomed);
+        removed = doomed.length;
+        logger.info(`[GEO] reaped stale members count=${removed} ids=${JSON.stringify(doomed)}`);
     }
     catch (error) {
         logger.error("[GEO] stale member reaper failed", error);
