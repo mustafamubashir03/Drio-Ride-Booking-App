@@ -12,6 +12,11 @@
  *
  * Run with SOCKET_SERVER_URL pointing at the local socket-server harness.
  */
+/**
+ * Guarded: this suite deletes and rewrites Redis/Mongo data, so it must never
+ * run against a shared or production datastore. Must be the FIRST import.
+ */
+import "./require-isolated-stores";
 import { spawn, type ChildProcess } from "child_process";
 import path from "path";
 import { Types } from "mongoose";

@@ -10,6 +10,11 @@
  * Nothing here is stubbed except the booking identity, which is a plain object
  * because the search stage machine only reads source/passenger/driver off it.
  */
+/**
+ * Guarded: this suite deletes and rewrites Redis/Mongo data, so it must never
+ * run against a shared or production datastore. Must be the FIRST import.
+ */
+import "./require-isolated-stores";
 import { spawn, type ChildProcess } from "child_process";
 import path from "path";
 import "../config/index";

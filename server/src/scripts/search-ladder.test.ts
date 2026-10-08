@@ -7,6 +7,11 @@
  * radius was actually queried (from the [DISPATCH] log the service emits and
  * from the persisted `search-stage` key).
  */
+/**
+ * Guarded: this suite deletes and rewrites Redis/Mongo data, so it must never
+ * run against a shared or production datastore. Must be the FIRST import.
+ */
+import "./require-isolated-stores";
 import { spawn, type ChildProcess } from "child_process";
 import path from "path";
 import { Types } from "mongoose";
