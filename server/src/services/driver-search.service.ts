@@ -266,14 +266,18 @@ const hasDriver = (booking: any) => Boolean(booking.driver);
  * budget is exhausted. Atomic DB transition decides the winner against a
  * racing driver confirm; if a driver already claimed it nothing happens.
  */
-export const expireBookingSearch = async (booking: any) => {
+export const expireBookingSearch = async (
+    booking: any,
+    deps?: Pick<SearchCycleDeps, "cancelBooking">,
+) => {
+    const cancelBooking = deps?.cancelBooking ?? cancelBookingRepository;
     const bookingId = String(booking._id);
     const passengerId = booking.passenger?._id ? String(booking.passenger._id) : null;
     if (!passengerId) {
         logger.warn(`[SEARCH] cannot expire bookingId=${bookingId}: passenger missing`);
         return null;
     }
-    const updated = await cancelBookingRepository({
+    const updated = await cancelBooking({
         bookingId,
         passengerId,
         fromStatus: "pending",
@@ -304,8 +308,27 @@ export const expireBookingSearch = async (booking: any) => {
  * guaranteed to resolve one way or the other — a claimed ride, a passenger
  * cancellation, or no_driver_found — and no search can run indefinitely.
  */
-export const runDriverSearchCycle = async (): Promise<{ advanced: number; expired: number }> => {
-    const bookings = await findPendingSearchingBookingsRepository();
+export type SearchCycleDeps = {
+    findPending: typeof findPendingSearchingBookingsRepository;
+    cancelBooking: typeof cancelBookingRepository;
+};
+
+/**
+ * Run one sweep.
+ *
+ * `deps` exists purely so the ladder can be exercised against an isolated Redis
+ * with in-memory bookings. Production always uses the Mongo repositories; the
+ * defaults are the real ones and there is no behavioural difference between the
+ * two paths.
+ */
+export const runDriverSearchCycle = async (
+    deps: SearchCycleDeps = {
+        findPending: findPendingSearchingBookingsRepository,
+        cancelBooking: cancelBookingRepository,
+    },
+): Promise<{ advanced: number; expired: number }> => {
+    const { findPending, cancelBooking } = deps;
+    const bookings = await findPending();
     let advanced = 0;
     let expired = 0;
 
@@ -324,7 +347,7 @@ export const runDriverSearchCycle = async (): Promise<{ advanced: number; expire
             elapsedMs >= SEARCH_MAX_DURATION_MS ||
             (elapsedMs >= SEARCH_MAX_DURATION_MS - SEARCH_STAGE_INTERVAL_MS && currentStage >= finalStage)
         ) {
-            const result = await expireBookingSearch(booking);
+            const result = await expireBookingSearch(booking, { cancelBooking });
             if (result) expired++;
             continue;
         }
