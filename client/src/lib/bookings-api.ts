@@ -38,10 +38,21 @@ export type BookingFeedback = {
     reviewedAt: string | null;
 };
 
+export type BookingSearchProgress = {
+    stage: number;
+    radiusKm: number;
+};
+
 export type BookingRecord = {
     _id: string;
     status: BookingStatus;
     fare: number | null;
+    /**
+     * Radius the backend has actually searched for a still-pending ride. Lets
+     * the search UI reflect real progress when the passenger socket is not
+     * connected. `null` once a driver is assigned or the ride leaves `pending`.
+     */
+    searchProgress: BookingSearchProgress | null;
     source: BookingCoordinates;
     destination: BookingCoordinates;
     driver: string | null;

@@ -881,6 +881,14 @@ export default function Dashboard() {
           current.feedback ?? { rating: null, comment: null, reviewedAt: null },
         );
         if (current.status !== "pending") setSearchProgress(null);
+        else if (current.searchProgress) {
+          // Socket-independent fallback. The socket stream is the primary
+          // source, but if it is down or reconnecting the passenger would
+          // otherwise watch a stale "Searching" while the backend had already
+          // widened the radius. These are the numbers the sweeper actually
+          // queried, not a client-side guess.
+          setSearchProgress(current.searchProgress);
+        }
         // Recover the driver's most recent position (Redis, 30s TTL) so the
         // live marker survives a reload until the socket stream resumes.
         if (current.driverLocation && current.driverLocation.latitude != null && current.driverLocation.longitude != null) {

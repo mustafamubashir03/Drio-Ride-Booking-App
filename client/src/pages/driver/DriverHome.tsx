@@ -216,15 +216,23 @@ export default function DriverHome() {
 
   useEffect(() => {
     if (!activeRideNeedsLocation) return;
-    startLocation();
+    // Navigation still needs the socket, but the GPS stream must wait for the
+    // server's driver-login acknowledgement (see the online branch below).
+    if (registered) startLocation();
     if (!connected) connect();
-  }, [activeRideNeedsLocation, connected, connect, startLocation]);
+  }, [activeRideNeedsLocation, connected, registered, connect, startLocation]);
 
   useEffect(() => {
     // GPS acquisition starts for online dispatch and remains active whenever
     // an accepted ride needs navigation, even if availability changes.
-    if (availability?.status === "online") startLocation();
-  }, [availability?.status, startLocation]);
+    //
+    // Gated on `registered`, not just on `connected`. driver-login needs a
+    // ticket round-trip, so a socket becomes "connected" several seconds before
+    // the socket-server has registered it, and it discards `driver-location`
+    // from a socket that has not logged in rather than buffering it. Streaming
+    // before registration therefore silently dropped every fix in that window.
+    if (availability?.status === "online" && registered) startLocation();
+  }, [availability?.status, registered, startLocation]);
 
   // The context bumps rideRefreshKey when the driver accepts a ride mid-session
   // (ride card + nav need the fresh booking state immediately).
