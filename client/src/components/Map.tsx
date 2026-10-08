@@ -341,6 +341,17 @@ const ROUTE_EMPTY_GEOJSON = {
 
 type MapTheme = "light" | "dark"
 
+/**
+ * Route line colours, kept in the brand accent family.
+ *
+ * `route`/`nav` both come from the drio-accent ramp declared in index.css
+ * (`--color-drio-accent`, `--color-drio-accent-light`). The active navigation leg
+ * used to be blue (`#2563eb` / `#60a5fa`), which read as a different, unrelated
+ * colour against the tan map and made the live leg look like it belonged to
+ * another app. The nav leg is now a brighter step of the same accent ramp so it
+ * still reads as "active" without leaving the palette, with a slightly deeper
+ * casing for contrast against the map.
+ */
 const ROUTE_COLORS: Record<MapTheme, {
   routeCasing: string
   route: string
@@ -350,14 +361,14 @@ const ROUTE_COLORS: Record<MapTheme, {
   light: {
     routeCasing: "#5a3a25",
     route: "#c88952",
-    navCasing: "#1e3a8a",
-    nav: "#2563eb",
+    navCasing: "#8a5a33",
+    nav: "#e5bd97",
   },
   dark: {
     routeCasing: "#5f402c",
     route: "#e5bd97",
-    navCasing: "#172554",
-    nav: "#60a5fa",
+    navCasing: "#6b4830",
+    nav: "#f7d3b2",
   },
 }
 
@@ -402,7 +413,8 @@ function ensureRouteLayers(map: MapLibreMap, theme: MapTheme = "light") {
     })
   }
 
-  // Navigation route layers (distinct color for active navigation)
+  // Navigation route layers (brighter step of the same accent ramp for the leg
+  // the driver is actively following)
   if (!map.getSource(NAV_ROUTE_SOURCE_ID)) {
     map.addSource(NAV_ROUTE_SOURCE_ID, {
       type: "geojson",
