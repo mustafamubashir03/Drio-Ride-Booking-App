@@ -1,6 +1,6 @@
 import { Server, Socket } from "socket.io";
-import { removeDriverBySocket, setDriverSocket, getDriverSocket } from "./services/driver.service";
-import { addDriverLocationToRedisService } from "./services/location.service";
+import { removeDriverBySocket, setDriverSocket, getDriverSocket, removeDriverSocketIfOwnedBy } from "./services/driver.service";
+import { addDriverLocationToRedisService, removeDriverLocationFromRedisService } from "./services/location.service";
 import { getDriverActiveRide, getRidePassenger, passengerRoom } from "./services/ride.service";
 import {
     authenticateDriverSocket,
@@ -112,7 +112,10 @@ export function initSocket(io: Server) {
             const socketData = socket.data as SocketData;
             const authenticatedDriverId = socketData.userId;
             if (!authenticatedDriverId || socketData.purpose !== "driver") {
-                logger.warn(`[SOCKET] driver-location rejected: unauthenticated socketId=${socket.id}`);
+                logger.warn(
+                    `[SOCKET] driver-location rejected: socketId=${socket.id} registered=${Boolean(authenticatedDriverId)} purpose=${socketData.purpose ?? "none"} ` +
+                    `-> this driver's GEO/freshness keys are NOT being written, so matching will exclude them`,
+                );
                 return;
             }
 
@@ -173,6 +176,33 @@ export function initSocket(io: Server) {
 
         socket.on("disconnect", async (reason) => {
             logger.info(`[SOCKET] Disconnect: socketId=${socket.id}, reason=${reason}`);
+            // Only tear down state this socket actually owned. A driver with two
+            // tabs open re-registers on the surviving one, so a disconnect from a
+            // stale socket must not unregister the driver or drop their GEO fix -
+            // otherwise the driver goes invisible to matching while still online.
+            const wasRegisteredDriver = socket.data.purpose === "driver" && Boolean(socket.data.userId);
+            if (wasRegisteredDriver) {
+                const owned = await removeDriverSocketIfOwnedBy(socket.data.userId!, socket.id);
+                if (owned) {
+                    logger.info(
+                        `[SOCKET] driver socket released driverId=${socket.data.userId} socketId=${socket.id}, clearing GEO presence`,
+                    );
+                    try {
+                        await removeDriverLocationFromRedisService(socket.data.userId!);
+                    }
+                    catch (err) {
+                        logger.error(
+                            `[SOCKET] failed to clear GEO presence for driverId=${socket.data.userId}`,
+                            err,
+                        );
+                    }
+                }
+                else {
+                    logger.info(
+                        `[SOCKET] driver socket superseded driverId=${socket.data.userId} socketId=${socket.id}, keeping mapping and GEO`,
+                    );
+                }
+            }
             await removeDriverBySocket(socket.id);
         });
     });

@@ -62,9 +62,24 @@ export const authenticateDriverSocket = async ({
     ticket?: unknown;
     driverId?: unknown;
 }): Promise<SocketIdentity | null> => {
+    // Distinguish "the client never presented a ticket" from "the ticket was
+    // presented but is missing / expired / already consumed". Both end in a
+    // rejection, but only the first one points at the client, and the second one
+    // usually points at a stale tab racing a single-use ticket. Without this the
+    // log only ever said "Driver authentication failed".
+    if (typeof ticket !== "string" || ticket.length === 0) {
+        logger.warn(
+            `[AUTH] driver socket rejected: no ticket presented (driverId=${typeof driverId === "string" ? driverId : "n/a"})`,
+        );
+        return null;
+    }
+
     const ticketIdentity = await resolveTicketIdentity(ticket, "driver");
     if (ticketIdentity) return ticketIdentity;
-    if (isProduction()) return null;
+    if (isProduction()) {
+        logger.warn("[AUTH] driver socket rejected: ticket missing, expired or already consumed");
+        return null;
+    }
 
     if (typeof driverId !== "string" || driverId.trim().length === 0) return null;
     return {
