@@ -4,7 +4,6 @@ import { authConfig } from './config/auth.config';
 import v1Router from './routers/v1/index.router';
 import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
-import { oauthDiagMiddleware } from './middlewares/oauth-diag.middleware';
 import { authRedirectFallbackMiddleware } from './middlewares/auth-redirect-fallback.middleware';
 import { attachCorrelationIdMiddleware } from './middlewares/correlation.middleware';
 import { logForwardedClientIpMiddleware } from './middlewares/client-ip.middleware';
@@ -60,11 +59,6 @@ const resolveAuthNodeHandler = async (): Promise<AuthNodeHandler> => {
     }
     return authNodeHandler;
 };
-
-// TEMPORARY: read-only OAuth diagnostics. Observes /api/auth/sign-in/social and
-// /api/auth/callback/* at the HTTP boundary; changes no request, response or
-// Better Auth behaviour. Remove together with oauth-diag.middleware.ts.
-app.use(oauthDiagMiddleware);
 
 // TEMPORARY: Render's static-site edge rewrites a browser-facing auth redirect
 // to a bodyless 200 on top-level navigations, which leaves the user on a blank
