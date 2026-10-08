@@ -15,7 +15,7 @@ import { requireLocalRedisUri } from "./require-local-redis";
 import { createClient } from "redis";
 import { connectRedis, disconnectRedis } from "../lib/redis";
 import { runDriverSearchCycle, kickoffDriverSearch, collectEligibleDriverIds } from "../services/driver-search.service";
-import { SEARCH_RADII_KM, SEARCH_MAX_DURATION_MS, SEARCH_STAGE_INTERVAL_MS } from "../config/search.config";
+import { SEARCH_RADII_KM, SEARCH_MAX_DURATION_MS } from "../config/search.config";
 
 const LOCAL_REDIS_URI = requireLocalRedisUri();
 
@@ -66,7 +66,7 @@ async function main() {
             bookingId,
             longitude: PICKUP.longitude,
             latitude: PICKUP.latitude,
-            rideInfo: { pickup: "A", destination: "B", fare: 100, passengerName: "P" },
+            rideInfo: { pickup: "A", destination: "B", fare: 100, distance: 7, passengerName: "P" },
         });
         check("kickoff found nobody at 5 km", notified === 0, `got ${notified}`);
         check("stage 0 recorded", (await redis.get(`search-stage:${bookingId}`)) === "0");
@@ -168,7 +168,11 @@ async function main() {
             await redis.zRem("drivers", k);
         }
     }
-    await redis.del(`search-stage:${bookingId}`, `notifiedDrivers:${bookingId}`, `driver-location:${DRIVER_ID}`);
+    await redis.del([
+        `search-stage:${bookingId}`,
+        `notifiedDrivers:${bookingId}`,
+        `driver-location:${DRIVER_ID}`,
+    ]);
 
     console.log(`\n=== search ladder: ${pass}/${pass + fail} passed ===`);
     if (fail > 0) {
