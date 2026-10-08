@@ -27,5 +27,9 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // src/scripts holds Node test harnesses run via ts-node against a real
+  // Redis/socket-server. They are not part of the browser bundle and use Node
+  // globals the app project deliberately does not include.
+  "exclude": ["src/scripts"]
 }

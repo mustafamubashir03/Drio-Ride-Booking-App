@@ -89,7 +89,8 @@ export default function DriverHome() {
   const { data: session } = authClient.useSession();
   const driverId = (session as unknown as { user?: { id?: string } })?.user?.id;
   const { page, stagger, reduced } = useMotionSystem();
-  const { connected, connect, disconnect, emitLocation, rideRefreshKey } = useOutletContext<DriverDashboardContext>();
+  const { connected, registered, loginError, retryLogin, connect, disconnect, emitLocation, rideRefreshKey } =
+    useOutletContext<DriverDashboardContext>();
   // Stable driver server data. Availability, the active ride, earnings and the
   // rating aggregate are all REST reads that change when this driver acts, so
   // they are cached. Realtime concerns stay out of here: GPS and the socket
@@ -276,6 +277,10 @@ useEffect(() => {
       if (next === "online") {
         location.start();
         connect();
+        // Going online is the natural recovery point for a driver whose ticket
+        // was refused earlier (for example before their application was
+        // approved). Re-attempt immediately rather than waiting out the backoff.
+        retryLogin();
       } else if (!activeRide) {
         location.stop();
         disconnect();
@@ -321,7 +326,13 @@ useEffect(() => {
         }
       : null;
 
-  const online = availability?.status === "online";
+  // `online` is the driver's own persisted intent and drives the toggle. Whether
+// the backend can actually route requests to them is a separate, stricter
+// question: the socket-server must have confirmed `driver-login`. Conflating
+// the two is how a driver ends up "online" but receiving nothing.
+const online = availability?.status === "online";
+const dispatchable = online && registered && connected;
+const notRegistered = online && !registered;
 
   return (
     <MotionPage className="relative flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row lg:overflow-hidden">
@@ -392,26 +403,44 @@ useEffect(() => {
                       You are {online ? "online" : "offline"}
                     </p>
                     <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-                      {online
-                        ? "Ready to accept ride requests when dispatch arrives."
-                        : "Go online to start receiving ride requests in your area."}
+                      {notRegistered
+                        ? "Connecting to dispatch. Ride requests resume automatically once the connection is confirmed."
+                        : online
+                          ? "Ready to accept ride requests when dispatch arrives."
+                          : "Go online to start receiving ride requests in your area."}
                     </p>
                   </div>
                   <span
-                    className={`mt-0.5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${online
+                    className={`mt-0.5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${dispatchable
                         ? "border-drio-success/25 bg-drio-success/10 text-drio-success"
                         : "border-amber-500/25 bg-amber-500/10 text-amber-500"
                       }`}
                   >
                     <span
-                      className={`inline-block h-1.5 w-1.5 rounded-full ${online
+                      className={`inline-block h-1.5 w-1.5 rounded-full ${dispatchable
                           ? "bg-drio-success animate-pulse motion-reduce:animate-none"
                           : "bg-amber-500/80"
                         }`}
                     />
-                    {online ? "Online" : "Offline"}
+                    {online ? (dispatchable ? "Online" : "Connecting") : "Offline"}
                   </span>
                 </div>
+                {notRegistered && (
+                  <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2">
+                    <p className="min-w-0 break-words text-[11.5px] leading-relaxed text-amber-500">
+                      {loginError
+                        ? `Not receiving requests yet: ${loginError}`
+                        : "Not receiving requests yet: connecting to dispatch."}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={retryLogin}
+                      className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-semibold text-amber-500 underline-offset-2 outline-none transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-ring/60"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
                 <Button
                   variant={online ? "destructive" : "default"}
                   className="mt-4 w-full hover:scale-[1.01] motion-reduce:hover:scale-100 motion-reduce:active:scale-100"

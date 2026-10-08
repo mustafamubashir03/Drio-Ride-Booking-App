@@ -54,6 +54,12 @@ interface IncomingRideRequestData {
 
 export type DriverDashboardContext = {
   connected: boolean;
+  /** True only once the socket-server confirmed `driver-login` for this socket. */
+  registered: boolean;
+  /** Why the driver is connected but not dispatchable, if that is the case. */
+  loginError: string | null;
+  /** Force a fresh login attempt (used when going online). */
+  retryLogin: () => void;
   connect: () => void;
   disconnect: () => void;
   emitLocation: (location: {
@@ -141,12 +147,13 @@ export default function DriverLayout() {
     [queryClient]
   );
 
-  const { connected, connect, disconnect, emitLocation } = useDriverSocket(
-    driverId,
-    handleNewRideNotification,
-    handleRemoveRideNotification,
-    handleRideStatusUpdate
-  );
+  const { connected, registered, loginError, connect, disconnect, retryLogin, emitLocation } =
+    useDriverSocket(
+      driverId,
+      handleNewRideNotification,
+      handleRemoveRideNotification,
+      handleRideStatusUpdate
+    );
 
   const handleAcceptRide = useCallback(async (rideId: string) => {
     setAcceptingRideId(rideId);
@@ -349,7 +356,7 @@ export default function DriverLayout() {
           ) : null}
           <Outlet
             context={
-              { connected, connect, disconnect, emitLocation, rideRefreshKey } satisfies DriverDashboardContext
+              { connected, registered, loginError, retryLogin, connect, disconnect, emitLocation, rideRefreshKey } satisfies DriverDashboardContext
             }
           />
         </main>

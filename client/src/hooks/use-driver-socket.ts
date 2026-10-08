@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { apiFetch, socketUrl } from "@/lib/runtime-config";
+import { DriverLoginMachine, type DriverLoginState } from "@/lib/driver-login";
 
 type DriverSocketState = {
   connected: boolean;
   connecting: boolean;
   error: string | null;
   socket: Socket | null;
+  /** True only after the socket-server confirmed `driver-login`. */
+  registered: boolean;
+  /** Why the driver is connected but not registered, if that is the case. */
+  loginError: string | null;
 };
 
 interface DriverLocationData {
@@ -66,40 +71,47 @@ export function useDriverSocket(
     connecting: false,
     error: null,
     socket: null,
+    registered: false,
+    loginError: null,
   });
 
   const socketRef = useRef<Socket | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectingRef = useRef(false);
   const driverIdRef = useRef(driverId);
-  const loginSocketIdRef = useRef<string | null>(null);
+  /**
+   * Owns the driver-login lifecycle: ticket acquisition, the wait for the
+   * server's `login-success`, and bounded retry. "Registered" is only ever set
+   * by that server acknowledgement, so `connected` can no longer be mistaken for
+   * "dispatchable".
+   *
+   * Built in an effect rather than a lazy initialiser because `emitLogin` has to
+   * read `socketRef`, and a ref must not be touched during render. Created once
+   * for the lifetime of the hook and disposed on unmount.
+   */
+  const [login, setLogin] = useState<DriverLoginMachine | null>(null);
+
+  useEffect(() => {
+    const machine = new DriverLoginMachine({
+      requestTicket: requestDriverTicket,
+      emitLogin: (payload) => {
+        socketRef.current?.emit("driver-login", payload);
+      },
+      onStateChange: (next: DriverLoginState) => {
+        setState((prev) => ({ ...prev, registered: next.registered, loginError: next.loginError }));
+      },
+    });
+    machine.setDriverId(driverIdRef.current ?? null);
+    setLogin(machine);
+    return () => machine.dispose();
+  }, []);
 
   useEffect(() => {
     driverIdRef.current = driverId;
-    loginSocketIdRef.current = null;
-  }, [driverId]);
-
-  const emitDriverLogin = useCallback(() => {
-    const socket = socketRef.current;
-    const currentDriverId = driverIdRef.current;
-    if (!socket?.connected || !currentDriverId) return;
-    if (loginSocketIdRef.current === socket.id) return;
-    loginSocketIdRef.current = socket.id!;
-
-    const request = (async () => {
-      try {
-        const ticket = await requestDriverTicket();
-        if (socketRef.current !== socket || !socket.connected) return;
-        socket.emit("driver-login", { ticket, driverId: currentDriverId });
-      } catch (error) {
-        if (socketRef.current !== socket || !socket.connected) return;
-        console.error("[DriverSocket] Ticket request failed", error);
-        socket.emit("driver-login", { driverId: currentDriverId });
-      }
-    })();
-
-    return request;
-  }, []);
+    login?.setDriverId(driverId ?? null);
+    // A driver id arriving late (session resolved, or approval just granted) is
+    // the trigger for a login attempt — no page reload required.
+    if (driverId) void login?.attempt();
+  }, [driverId, login]);
 
   const connect = useCallback(() => {
     if (socketRef.current || connectingRef.current) return;
@@ -121,7 +133,7 @@ export function useDriverSocket(
 
     socket.on("connect", () => {
       connectingRef.current = false;
-      console.log("[DriverSocket] Connected socketId:", socketRef.current?.id);
+      console.log("[DriverSocket] Connected socketId:", socket.id);
       setState((prev) => ({
         ...prev,
         connected: true,
@@ -129,15 +141,16 @@ export function useDriverSocket(
         error: null,
         socket,
       }));
-      void emitDriverLogin();
+      // Every connect — first one and every auto-reconnect — re-attempts the
+      // login for the new socket id.
+      login?.setSocket(socket.id ?? null, driverIdRef.current ?? null);
+      void login?.attempt();
     });
 
     socket.on("disconnect", (reason) => {
       connectingRef.current = false;
-      if (socketRef.current === socket) {
-        loginSocketIdRef.current = null;
-      }
       console.log("[DriverSocket] Disconnected, reason:", reason);
+      login?.socketClosed(socket.id ?? "");
       setState((prev) => ({
         ...prev,
         connected: false,
@@ -157,12 +170,15 @@ export function useDriverSocket(
 
     socket.on("login-success", () => {
       console.log("[DriverSocket] Login success");
+      login?.acknowledgeSuccess(socket.id ?? "");
     });
 
     socket.on("login-fail", (data) => {
-      console.error("[DriverSocket] Login failed:", data);
-      loginSocketIdRef.current = null;
-      setState((prev) => ({ ...prev, error: data?.message || "Login failed" }));
+      console.error("[DriverSocket] Login failed:", data?.message);
+      login?.acknowledgeFailure(
+        socket.id ?? "",
+        data?.message || "Driver authentication failed",
+      );
     });
 
     socket.on("new_ride_notification", (data: RideNotificationData) => {
@@ -180,15 +196,17 @@ export function useDriverSocket(
       onRideStatusUpdate?.(data);
     });
 
-  }, [onNewRideNotification, onRemoveRideNotification, onRideStatusUpdate, emitDriverLogin]);
+  }, [onNewRideNotification, onRemoveRideNotification, onRideStatusUpdate, login]);
+
+  /** Force a fresh login attempt now. Safe to call at any time. */
+  const retryLogin = useCallback(() => {
+    login?.setSocket(socketRef.current?.id ?? null, driverIdRef.current ?? null);
+    login?.retryNow();
+  }, [login]);
 
   const disconnect = useCallback(() => {
     connectingRef.current = false;
-    loginSocketIdRef.current = null;
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
+    login?.socketClosed(socketRef.current?.id ?? "");
     socketRef.current?.disconnect();
     socketRef.current = null;
     setState({
@@ -196,9 +214,15 @@ export function useDriverSocket(
       connecting: false,
       error: null,
       socket: null,
+      registered: false,
+      loginError: null,
     });
-  }, []);
+  }, [login]);
 
+  // Deliberately NOT gated on `registered`: GPS streaming and socket
+  // registration are independent signals, and the socket-server decides
+  // whether it can accept a `driver-location`. Coupling them here would hide
+  // which of the two is unhealthy.
   const emitLocation = useCallback((location: DriverLocationData) => {
     if (!socketRef.current?.connected) return;
     if (!driverIdRef.current) return;
@@ -206,12 +230,7 @@ export function useDriverSocket(
     socketRef.current.emit("driver-location", location);
   }, []);
 
-  useEffect(() => {
-    if (driverId && socketRef.current?.connected) {
-      void emitDriverLogin();
-    }
-  }, [driverId, emitDriverLogin]);
-
+  // The login machine disposes itself in its own creation effect's cleanup.
   useEffect(() => {
     return () => {
       disconnect();
@@ -222,6 +241,7 @@ export function useDriverSocket(
     ...state,
     connect,
     disconnect,
+    retryLogin,
     emitLocation,
   };
 }
