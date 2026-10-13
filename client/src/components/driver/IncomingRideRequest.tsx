@@ -78,8 +78,12 @@ export function IncomingRideRequest({
         exit="exit"
         className={cn(
           "pointer-events-none fixed left-[max(0.75rem,env(safe-area-inset-left))] right-[max(0.75rem,env(safe-area-inset-right))] bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 w-auto",
+          // On large screens DriverLayout renders this inline ABOVE the map, in a
+          // full-width band. Centring it in a narrow max-width left a detached
+          // dark island floating in empty gutters, so it fills the band instead
+          // and reads as part of the workspace rather than a box on top of it.
           inline
-            ? "lg:relative lg:inset-auto lg:z-auto lg:mx-auto lg:w-full lg:max-w-2xl"
+            ? "lg:relative lg:inset-auto lg:z-auto lg:w-full lg:max-w-none"
             : "lg:hidden",
         )}
       >
@@ -88,7 +92,20 @@ export function IncomingRideRequest({
            tabIndex={-1}
            role="dialog"
            aria-label="New ride request"
-           className="pointer-events-auto max-h-[calc(100dvh-8.25rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain border-destructive/25 bg-card/95 shadow-xl backdrop-blur-sm focus-within:border-destructive/40 focus-within:ring-1 focus-within:ring-destructive/20 lg:max-h-none lg:overflow-hidden lg:shadow-2xl"
+           className={cn(
+             "pointer-events-auto max-h-[calc(100dvh-8.25rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain border-destructive/25 bg-card/95 shadow-xl focus-within:border-destructive/40 focus-within:ring-1 focus-within:ring-destructive/20",
+             // Blur only while the card floats over the map on a phone. Bounded
+             // with a max-sm variant rather than cancelled from sm upward,
+             // because Tailwind emits no rule to cancel a blur at that
+             // breakpoint - verified against the built CSS, where the blur would
+             // otherwise have survived on desktop.
+             "max-sm:backdrop-blur-sm",
+             // Desktop: it is in-flow, not floating, so a 2xl shadow and a
+             // backdrop blur only made the panel look like a heavy detached slab.
+             // The height cap stops a long pickup/destination from pushing the map
+             // off screen - the request scrolls internally instead.
+             "lg:max-h-[min(62vh,30rem)] lg:bg-card lg:shadow-sm",
+           )}
          >
            <span className="sr-only" role="status">New ride request received</span>
            <CardContent>
@@ -129,7 +146,10 @@ export function IncomingRideRequest({
                </div>
              )}
 
-            <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5">
+            {/* Pickup/destination side by side from lg up: they were stacked on
+                every screen size, which is what pushed the request to roughly half
+                the viewport height on a laptop. The phone layout is unchanged. */}
+            <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5 lg:grid lg:grid-cols-2 lg:gap-x-4 lg:space-y-0">
               <div className="flex items-start gap-2.5">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <div className="min-w-0">
