@@ -84,8 +84,14 @@ const navAccentStyles: Record<
 
 const vehicleTypes = [
   { id: "mini", label: "Mini", img: "/mini.png", desc: "Affordable · Everyday" },
-  { id: "go", label: "Go", img: "/Go-AC.jpg", desc: "Comfort · AC" },
-  { id: "premium", label: "Premium", img: "/premium.jpg", desc: "Premium · Quiet" },
+  { id: "go", label: "Go", img: "/go.png", desc: "Comfort · AC" },
+  { id: "go-ac", label: "Go AC", img: "/go.png", desc: "Comfort · AC" },
+  { id: "ac", label: "AC", img: "/go.png", desc: "Comfort · AC" },
+  { id: "premium", label: "Premium", img: "/premium.png", desc: "Premium · Quiet" },
+  { id: "pro", label: "Pro", img: "/pro.png", desc: "Executive · Premium" },
+  { id: "suv", label: "SUV", img: "/suv.png", desc: "Spacious · Family" },
+  { id: "lux", label: "Lux", img: "/premium.png", desc: "Luxury · Top" },
+  { id: "bike", label: "Bike", img: "/bike.png", desc: "Fast · Affordable" },
 ] as const;
 
 const vehicleAccentStyles: Record<
@@ -101,6 +107,25 @@ const vehicleAccentStyles: Record<
   premium: {
     selectedCard: "border-drio-violet/40 bg-drio-violet/10 ring-1 ring-drio-violet/20",
   },
+  pro: {
+      selectedCard: "border-drio-violet/40 bg-drio-violet/10 ring-1 ring-drio-violet/20",
+    },
+  suv: {
+      selectedCard: "border-primary/40 bg-primary/10 ring-1 ring-primary/20",
+    },
+  lux: {
+      selectedCard: "border-drio-violet/40 bg-drio-violet/10 ring-1 ring-drio-violet/20",
+    },
+  bike: {
+      selectedCard: "border-drio-blue/40 bg-drio-blue/10 ring-1 ring-drio-blue/20",
+    },
+  "go-ac": {
+      selectedCard: "border-drio-blue/40 bg-drio-blue/10 ring-1 ring-drio-blue/20",
+    },
+  ac: {
+      selectedCard: "border-drio-blue/40 bg-drio-blue/10 ring-1 ring-drio-blue/20",
+    },
+
 };
 
 function Initials({ name, email }: { name?: string; email?: string }) {
@@ -1185,7 +1210,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
                           initial={false}
                           animate={{ y: isSelected ? -6 : -2, scale: isSelected ? 1.08 : 1.02 }}
                           transition={{ type: "spring", stiffness: 460, damping: 24 }}
-                          className="pointer-events-none absolute -top-12 left-1/2 h-24 w-32 -translate-x-1/2 object-contain bg-transparent mix-blend-multiply dark:mix-blend-screen drop-shadow-xl"
+                          className="pointer-events-none absolute -top-12 left-1/2 h-24 w-32 -translate-x-1/2 object-contain bg-transparent drop-shadow-2xl filter"
                         />
                       ) : null;
                     })()}
@@ -1205,22 +1230,22 @@ const [reviewOpen, setReviewOpen] = useState(false);
 
         {/* Fare estimate */}
         <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/25 px-4 py-3">
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              Estimated fare
-            </p>
-              <p className="mt-1 font-sans text-[18px] font-bold tabular-nums text-foreground">
-                {estimatedFareLabel}
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            Estimated fare
+          </p>
+          <p className="mt-1 font-sans text-[18px] font-bold tabular-nums text-foreground">
+            {estimatedFareLabel}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            Ride
+          </p>
+              <p className="mt-1 text-[13px] font-semibold tabular-nums text-foreground">
+                {vehicle === "mini" ? "Mini" : vehicle === "go" ? "Go" : vehicle === "go-ac" || vehicle === "ac" ? "Go AC" : vehicle === "premium" ? "Premium" : vehicle === "pro" ? "Pro" : vehicle === "suv" ? "SUV" : vehicle === "lux" ? "Lux" : vehicle === "bike" ? "Bike" : vehicle}
               </p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                ETA
-              </p>
-              <p className="mt-1 text-[14px] font-semibold tabular-nums text-foreground">
-                {vehicle === "mini" ? "3 min" : vehicle === "go" ? "4 min" : "5 min"}
-              </p>
-            </div>
+        </div>
         </div>
 
         {/* CTA */}

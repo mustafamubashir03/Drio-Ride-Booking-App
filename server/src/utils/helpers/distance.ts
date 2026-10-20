@@ -42,5 +42,8 @@ export function calculateFare(
     const BASIC_FARE = cfg.baseFare;
     const PER_KM = cfg.perKm;
     const distance = Math.round(calculateHaversineDistance(sourceLat, sourceLon, destLat, destLon) * 100) / 100;
-    return Math.round((BASIC_FARE + PER_KM * distance) * 100) / 100;
+    const base = (BASIC_FARE + PER_KM * distance);
+    const multiplier = category === 'premium' ? 1.15 : category === 'go' ? 1.05 : category === 'mini' ? 1.0 : 1.0;
+    const fare = Math.round(base * multiplier * 100) / 100;
+    return fare > 0 ? fare : Number((BASIC_FARE + PER_KM * Math.max(distance, 0.1)).toFixed(2));
 }
