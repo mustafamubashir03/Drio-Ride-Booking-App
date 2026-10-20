@@ -78,12 +78,13 @@ export function IncomingRideRequest({
         exit="exit"
         className={cn(
           "pointer-events-none fixed left-[max(0.75rem,env(safe-area-inset-left))] right-[max(0.75rem,env(safe-area-inset-right))] bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 w-auto",
-          // On large screens DriverLayout renders this inline ABOVE the map, in a
-          // full-width band. Centring it in a narrow max-width left a detached
-          // dark island floating in empty gutters, so it fills the band instead
-          // and reads as part of the workspace rather than a box on top of it.
+          // On large screens DriverLayout used to render this inline in a
+          // full-width band above the map, which pushed the map down and read as
+          // a giant strip appearing out of nowhere. It now floats over the map's
+          // bottom-right corner at a bounded width, like the passenger's ride
+          // card, so the workspace never reflows when a request arrives.
           inline
-            ? "lg:relative lg:inset-auto lg:z-auto lg:w-full lg:max-w-none"
+            ? "lg:inset-auto lg:right-5 lg:bottom-5 lg:z-40 lg:w-[25rem] lg:max-w-[calc(100vw-2rem)]"
             : "lg:hidden",
         )}
       >
@@ -100,11 +101,9 @@ export function IncomingRideRequest({
              // breakpoint - verified against the built CSS, where the blur would
              // otherwise have survived on desktop.
              "max-sm:backdrop-blur-sm",
-             // Desktop: it is in-flow, not floating, so a 2xl shadow and a
-             // backdrop blur only made the panel look like a heavy detached slab.
-             // The height cap stops a long pickup/destination from pushing the map
-             // off screen - the request scrolls internally instead.
-             "lg:max-h-[min(62vh,30rem)] lg:bg-card lg:shadow-sm",
+             // Desktop: a bounded floating panel over the map, so a long
+             // pickup/destination scrolls inside it instead of growing the card.
+             "lg:max-h-[min(70vh,32rem)] lg:rounded-2xl lg:bg-card lg:shadow-2xl",
            )}
          >
            <span className="sr-only" role="status">New ride request received</span>

@@ -309,23 +309,25 @@ export default function DriverLayout() {
             already labels the current section. */}
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[calc(4.25rem+max(0.75rem,env(safe-area-inset-bottom)))] lg:pb-0">
+          {/* Fixed to the viewport at every width (bottom sheet on phones, a
+              bounded floating card over the map at lg), so it needs no in-flow
+              wrapper: mounting it directly keeps the workspace from reflowing
+              when a request arrives. */}
           {incomingRide ? (
-            <div className="contents lg:block lg:shrink-0 lg:p-4">
-              <IncomingRideRequest
-                rideId={incomingRide.rideId}
-                pickup={incomingRide.pickup}
-                destination={incomingRide.destination}
-                fare={incomingRide.fare}
-                distance={incomingRide.distance}
-                passengerName={incomingRide.passengerName}
-                passengerImage={incomingRide.passengerImage}
-                expiresAt={incomingRide.expiresAt}
-                onDismiss={handleDismissIncomingRide}
-                onAccept={handleAcceptRide}
-                accepting={acceptingRideId === incomingRide.rideId}
-                inline
-              />
-            </div>
+            <IncomingRideRequest
+              rideId={incomingRide.rideId}
+              pickup={incomingRide.pickup}
+              destination={incomingRide.destination}
+              fare={incomingRide.fare}
+              distance={incomingRide.distance}
+              passengerName={incomingRide.passengerName}
+              passengerImage={incomingRide.passengerImage}
+              expiresAt={incomingRide.expiresAt}
+              onDismiss={handleDismissIncomingRide}
+              onAccept={handleAcceptRide}
+              accepting={acceptingRideId === incomingRide.rideId}
+              inline
+            />
           ) : null}
           <Outlet
             context={
