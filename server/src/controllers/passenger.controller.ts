@@ -18,6 +18,7 @@ export const createBookingController = async (req: Request, res: Response) => {
             destination,
             passengerName: req.authUser!.name,
             passengerImage: req.authUser!.image,
+            vehicleType: req.body?.vehicleType || 'mini',
         });
         logger.info(`[CONTROLLER] createBookingService returned: ${booking ? `bookingId=${booking._id}` : 'null'}`);
         if (!booking) {

@@ -17,16 +17,18 @@ export const createBookingService = async ({
     destination,
     passengerName,
     passengerImage,
+    vehicleType,
 }: {
     passengerId: string,
     source: BookingLocation,
     destination: BookingLocation,
     passengerName?: string,
     passengerImage?: string | null,
+    vehicleType?: string,
 }) => {
     try {
         const distance = Math.round(calculateHaversineDistance(source.latitude, source.longitude, destination.latitude, destination.longitude) * 100) / 100;
-        const fare = calculateFare(source.latitude, source.longitude, destination.latitude, destination.longitude);
+        const fare = calculateFare(source.latitude, source.longitude, destination.latitude, destination.longitude, (vehicleType as any) || 'mini');
         logger.info(`[BOOKING] Creating booking: passengerId=${passengerId}, source=(${source.latitude},${source.longitude}), destination=(${destination.latitude},${destination.longitude}), fare=${fare}, distance=${distance}`);
         const booking = await createBookingRepository({
             passenger: passengerId,
@@ -34,6 +36,7 @@ export const createBookingService = async ({
             destination,
             fare,
             distance,
+            vehicleType: vehicleType || 'mini',
             status: "pending",
         })
 

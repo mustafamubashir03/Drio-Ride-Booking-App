@@ -16,6 +16,8 @@ interface User {
     banned?: boolean;
     banReason?: string | null;
     banExpires?: Date | null;
+    // Optional vehicle category if user is a driver
+    vehicleType?: string;
     location?: {
         type: "Point";
         coordinates: number[];
@@ -37,6 +39,7 @@ const userSchema = new Schema<User>({
     banned: { type: Boolean, default: false },
     banReason: { type: String, default: null },
     banExpires: { type: Date, default: null },
+    vehicleType: { type: String, default: 'mini' },
     location: {
         type: {
             type: String,

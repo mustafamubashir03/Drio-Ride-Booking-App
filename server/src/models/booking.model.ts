@@ -52,6 +52,12 @@ const bookingSchema = new mongoose.Schema({
         }
     },
     fare: Number,
+    // Ride category/vehicle type. Backward compatible: null/undefined means legacy.
+    vehicleType: {
+        type: String,
+        enum: ['mini', 'go', 'go-ac', 'ac', 'premium', 'pro', 'suv', 'lux', 'bike'],
+        default: 'mini',
+    },
     status: {
         type: String,
         enum: [...BOOKING_STATUSES] as string[],

@@ -17,9 +17,30 @@ export function calculateHaversineDistance(sourceLat: number, sourceLon: number,
     return EARTH_RADIUS_KM * c;
 }
 
-export function calculateFare(sourceLat: number, sourceLon: number, destLat: number, destLon: number) {
-    const BASIC_FARE = 50;
-    const PER_KM = 10;
+export type RideCategory = 'mini' | 'go' | 'go-ac' | 'ac' | 'premium' | 'pro' | 'suv' | 'lux' | 'bike';
+
+export const RIDE_CATEGORY_CONFIG: Record<RideCategory, { baseFare: number; perKm: number; perMin?: number; label: string; description?: string }> = {
+    mini: { baseFare: 40, perKm: 9, label: 'Mini' },
+    go: { baseFare: 45, perKm: 10, label: 'Go' },
+    'go-ac': { baseFare: 55, perKm: 12, label: 'Go AC' },
+    ac: { baseFare: 55, perKm: 12, label: 'Go AC' },
+    premium: { baseFare: 70, perKm: 15, label: 'Premium' },
+    pro: { baseFare: 90, perKm: 18, label: 'Pro' },
+    suv: { baseFare: 95, perKm: 19, label: 'SUV' },
+    lux: { baseFare: 120, perKm: 24, label: 'Lux' },
+    bike: { baseFare: 25, perKm: 6, label: 'Bike' },
+};
+
+export function calculateFare(
+    sourceLat: number,
+    sourceLon: number,
+    destLat: number,
+    destLon: number,
+    category: RideCategory = 'mini'
+) {
+    const cfg = RIDE_CATEGORY_CONFIG[category] || RIDE_CATEGORY_CONFIG.mini;
+    const BASIC_FARE = cfg.baseFare;
+    const PER_KM = cfg.perKm;
     const distance = Math.round(calculateHaversineDistance(sourceLat, sourceLon, destLat, destLon) * 100) / 100;
     return Math.round((BASIC_FARE + PER_KM * distance) * 100) / 100;
 }

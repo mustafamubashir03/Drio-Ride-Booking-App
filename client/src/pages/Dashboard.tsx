@@ -83,9 +83,9 @@ const navAccentStyles: Record<
 };
 
 const vehicleTypes = [
-  { id: "premium", label: "Ride", icon: Car, eta: "4 min", accent: "primary" },
-  { id: "suv", label: "Ride XL", icon: Car, eta: "6 min", accent: "blue" },
-  { id: "lux", label: "Lux", icon: Car, eta: "9 min", accent: "violet" },
+  { id: "mini", label: "Mini", icon: Car, eta: "3 min", accent: "primary", img: "/mini.png" },
+  { id: "go", label: "Go", icon: Car, eta: "4 min", accent: "blue", img: "/Go-AC.jpg" },
+  { id: "premium", label: "Premium", icon: Car, eta: "5 min", accent: "violet", img: "/premium.jpg" },
 ] as const;
 
 const vehicleAccentStyles: Record<
@@ -250,7 +250,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [vehicle, setVehicle] = useState<
     (typeof vehicleTypes)[number]["id"]
-  >("premium");
+  >("mini");
   const [rideBooked, setRideBooked] = useState(false);
   const [fromLocation, setFromLocation] = useState<SelectedLocation | null>(null);
   const [toLocation, setToLocation] = useState<SelectedLocation | null>(null);
@@ -702,6 +702,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
             latitude: toLocation.latitude,
             longitude: toLocation.longitude,
           },
+          vehicleType: vehicle,
         }),
       });
       let data: { success?: boolean; message?: string; booking?: { _id?: string; fare?: number | null } } = {};
@@ -1156,6 +1157,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
         </div>
 
         {/* Vehicle selector */}
+        {routeStatus === "success" && fareReady && (
         <div>
           <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground mb-3">
             Choose ride type
@@ -1182,12 +1184,19 @@ const [reviewOpen, setReviewOpen] = useState(false);
                     : "border-border bg-card hover:border-ring/30 hover:bg-muted/40"
                     }`}
                 >
-                  <Car
-                    className={`h-5 w-5 ${isSelected
-                      ? accent.iconSelected
-                      : accent.iconIdle
-                      }`}
-                  />
+                  {(() => {
+                    const vimg = (v as unknown as { img?: string }).img;
+                    return vimg ? (
+                      <img src={vimg} alt={v.label} className="h-8 w-12 object-contain rounded-sm" />
+                    ) : (
+                      <Car
+                        className={`h-5 w-5 ${isSelected
+                          ? accent.iconSelected
+                          : accent.iconIdle
+                          }`}
+                      />
+                    );
+                  })()}
                   <span className="text-[13px] font-semibold text-foreground leading-tight">
                     {v.label}
                   </span>
@@ -1199,6 +1208,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
             })}
           </motion.div>
         </div>
+        )}
 
         {/* Fare estimate */}
         <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/25 px-4 py-3">
