@@ -539,7 +539,7 @@ const notRegistered = online && !registered;
                 {/* Explains the permission state instead of showing a bare
                     error string. Calls the existing location.start handler, so
                     the Geolocation API behaviour is unchanged. */}
-                {!isTracking && (
+{!isTracking && (
                   <LocationPermission
                     className="mt-3"
                     state={
@@ -550,6 +550,7 @@ const notRegistered = online && !registered;
                           : location.permission
                     }
                     onRequest={location.start}
+                    onDismiss={() => location.start()}
                   />
                 )}
               </div>

@@ -1209,7 +1209,9 @@ const [reviewOpen, setReviewOpen] = useState(false);
   const renderRideStatusSurface = (variant: "desktop" | "mobile") => {
     const compact = variant === "mobile";
     const pfx = compact ? "m-" : "";
-    const panelClass = compact ? "px-4 py-4" : "border-t border-border bg-card px-6 py-5";
+    const panelClass = compact
+      ? "px-4 py-4"
+      : "flex justify-center border-t border-border bg-transparent px-6 py-4";
     return (
       <AnimatePresence>
         {rideBooked && findingDriver && (
@@ -1260,7 +1262,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
               id={`${pfx}cancel-search-btn`}
               variant="destructive"
               size="lg"
-              className="mt-3 w-full border border-destructive/25 text-[14px] font-semibold"
+              className="mt-3 w-full sm:w-auto border border-destructive/25 text-[14px] font-semibold"
               onClick={() => setCancelOpen(true)}
             >
               Cancel ride
@@ -1336,7 +1338,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
                 id={`${pfx}cancel-ride-btn`}
                 variant="destructive"
                 size="lg"
-                className="mt-3 w-full border border-destructive/25 text-[14px] font-semibold"
+                className="mt-3 w-full sm:w-auto border border-destructive/25 text-[14px] font-semibold"
                 onClick={() => setCancelOpen(true)}
               >
                 Cancel ride
@@ -1757,6 +1759,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
                         setLocationUi("loading");
                         requestLocationRef.current?.();
                       }}
+                      onDismiss={() => setLocationUi("prompt")}
                     />
                   )}
                   {renderBookingSurface("mobile")}

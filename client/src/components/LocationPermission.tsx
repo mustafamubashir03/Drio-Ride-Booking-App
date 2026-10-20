@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Loader2, LocateFixed, MapPin, ShieldAlert, WifiOff } from "lucide-react";
+import { Loader2, LocateFixed, MapPin, ShieldAlert, WifiOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMotionSystem } from "@/motion/use-motion";
 import { cn } from "@/lib/utils";
@@ -73,18 +73,25 @@ const COPY: Record<LocationUiState, Copy> = {
 export default function LocationPermission({
   state,
   onRequest,
+  onDismiss,
   className,
   compact = false,
 }: {
   state: LocationUiState;
   /** Calls the caller's existing "use my location" handler. Never called for denied/unsupported. */
   onRequest?: () => void;
+  /** Called when the user dismisses the permission prompt. */
+  onDismiss?: () => void;
   className?: string;
   compact?: boolean;
 }) {
   const { title, body, icon: Icon, tone, showAction } = COPY[state];
   const spinning = state === "loading";
   const { reduced } = useMotionSystem();
+
+  // Show dismiss button for states where the user might want to dismiss the notice
+  // but we're not showing the primary action (e.g., denied, unavailable, unsupported)
+  const showDismiss = !showAction && (state === "denied" || state === "unavailable" || state === "unsupported");
 
   return (
     <div
@@ -122,17 +129,32 @@ export default function LocationPermission({
             </p>
           )}
 
-          {showAction && onRequest && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={onRequest}
-              className="mt-2.5 h-8 rounded-lg px-3 text-[12px] font-semibold"
-            >
-              {state === "unavailable" ? "Try again" : "Allow location"}
-            </Button>
-          )}
+          <div className="mt-3 flex items-center gap-2">
+            {showAction && onRequest && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={onRequest}
+                className="mt-2.5 h-8 rounded-lg px-3 text-[12px] font-semibold"
+              >
+                {state === "unavailable" ? "Try again" : "Allow location"}
+              </Button>
+            )}
+
+            {showDismiss && onDismiss && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={onDismiss}
+                className="h-8 rounded-lg px-3 text-muted-foreground/60 hover:text-foreground hover:bg-muted"
+                aria-label="Dismiss"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
+          </div>
         </motion.div>
       </AnimatePresence>
     </div>
