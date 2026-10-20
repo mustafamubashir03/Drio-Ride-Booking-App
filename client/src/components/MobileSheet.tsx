@@ -131,7 +131,10 @@ export default function MobileSheet({
   return (
     <div
       className={cn(
-        "pointer-events-none absolute inset-x-0 bottom-0 z-20 lg:hidden",
+        "pointer-events-none absolute inset-x-0 bottom-0 z-20",
+        // On desktop, the sheet becomes an in-flow panel inside the layout.
+        // Reset absolute positioning and hide the mobile bottom sheet.
+        "lg:static lg:inset-auto lg:z-auto",
         desktopClassName,
         className,
       )}
