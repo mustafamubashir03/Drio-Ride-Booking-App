@@ -39,10 +39,25 @@ export default function PlaceSearchField({
   const [geoBusy, setGeoBusy] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const geoBusyRef = useRef(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     geoBusyRef.current = geoBusy;
   }, [geoBusy]);
+
+  // The popover is forced open while `geoError` is set, so without a dismissal
+  // path the notice never leaves the screen. Pressing anywhere outside the
+  // field ends the interaction that produced it and clears it; the inline ✕ on
+  // the error row does the same without leaving the field.
+  useEffect(() => {
+    if (!geoError) return;
+    const handleOutsidePress = (event: MouseEvent) => {
+      const root = rootRef.current;
+      if (root && !root.contains(event.target as Node)) setGeoError(null);
+    };
+    document.addEventListener("mousedown", handleOutsidePress);
+    return () => document.removeEventListener("mousedown", handleOutsidePress);
+  }, [geoError]);
 
   const displayValue = focused
     ? text
@@ -52,6 +67,7 @@ export default function PlaceSearchField({
 
   const handleChange = (value: string) => {
     setText(value);
+    setGeoError(null);
     if (selectedLocation && value.trim() !== selectedLocation.name) {
       onDeselectLocation();
     }
@@ -68,6 +84,7 @@ export default function PlaceSearchField({
   const handleClear = () => {
     onDeselectLocation();
     setText("");
+    setGeoError(null);
     placeSearch.reset();
     setFocused(false);
   };
@@ -128,7 +145,7 @@ export default function PlaceSearchField({
   };
 
   return (
-    <div className="relative flex items-center gap-3">
+    <div ref={rootRef} className="relative flex items-center gap-3">
       {variant === "from" ? (
         <div className="flex flex-col items-center shrink-0">
           <span className="h-2.5 w-2.5 rounded-full bg-primary" />
@@ -150,6 +167,9 @@ export default function PlaceSearchField({
           onChange={(e) => handleChange(e.target.value)}
           onFocus={() => {
             setFocused(true);
+            // A fresh focus is a fresh attempt, so a stale failure is dropped
+            // instead of being re-shown over the field the user just tapped.
+            setGeoError(null);
             if (text.trim().length >= 2) {
               placeSearch.setQuery(text);
             }
@@ -224,8 +244,17 @@ export default function PlaceSearchField({
                 </button>
               )}
               {geoError && (
-                <div className="px-4 py-3 text-[12px] text-destructive border-b border-border">
-                  {geoError}
+                <div className="flex items-start gap-2 border-b border-border px-4 py-3 text-[12px] text-destructive">
+                  <span className="min-w-0 flex-1">{geoError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setGeoError(null)}
+                    aria-label="Dismiss location message"
+                    title="Dismiss"
+                    className="-mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
                 </div>
               )}
               {placeSearch.status === 'loading' && (

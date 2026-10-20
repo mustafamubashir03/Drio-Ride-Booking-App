@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useRoute } from "@/hooks/use-route";
 import { useNavigationRoute } from "@/hooks/use-navigation-route";
-import { useDriverLocation } from "@/hooks/use-driver-location";
+import { useDriverLocation, type DriverLocationPermission } from "@/hooks/use-driver-location";
 import { MotionPage } from "@/motion/MotionPage";
 import { AnimatePresence, motion } from "motion/react";
 import { motionStateProps, useMotionSystem } from "@/motion/use-motion";
@@ -148,6 +148,15 @@ export default function DriverHome() {
     throttleMs: 3000,
   });
   const startLocation = location.start;
+
+  // Dismissing the location notice must actually hide it. The previous wiring
+  // called `location.start()` from the ✕, which only re-ran the request that had
+  // just failed, so the same warning reappeared immediately. The dismissal is
+  // keyed to the permission state it was given for: it holds for that state and
+  // is spent as soon as the permission state itself changes, so a genuinely new
+  // outcome is explained again. Derived, so nothing needs resetting in an effect.
+  const [dismissedPermission, setDismissedPermission] = useState<DriverLocationPermission | null>(null);
+  const locationNoticeDismissed = dismissedPermission === location.permission;
 
   const from: SelectedLocation | null = useMemo(
     () => (activeRide ? toLocation(activeRide.source) : null),
@@ -538,21 +547,23 @@ const notRegistered = online && !registered;
                 </div>
                 {/* Explains the permission state instead of showing a bare
                     error string. Calls the existing location.start handler, so
-                    the Geolocation API behaviour is unchanged. */}
-{!isTracking && (
-                  <LocationPermission
-                    className="mt-3"
-                    state={
-                      location.permission === "granted"
-                        ? "loading"
-                        : location.permission === "prompt"
-                          ? "prompt"
-                          : location.permission
-                    }
-                    onRequest={location.start}
-                    onDismiss={() => location.start()}
-                  />
-                )}
+                    the Geolocation API behaviour is unchanged.
+
+                    `granted` is deliberately excluded: permission being fine is
+                    not something to explain, and going offline keeps permission
+                    at "granted" while tracking stops — which is exactly the case
+                    that used to render a "Finding your location" spinner with no
+                    action and no dismiss, forever. */}
+                {!isTracking &&
+                  !locationNoticeDismissed &&
+                  location.permission !== "granted" && (
+                    <LocationPermission
+                      className="mt-3"
+                      state={location.permission === "prompt" ? "prompt" : location.permission}
+                      onRequest={location.start}
+                      onDismiss={() => setDismissedPermission(location.permission)}
+                    />
+                  )}
               </div>
 
               <div className="rounded-2xl border border-border bg-card p-4 transition-colors duration-200">

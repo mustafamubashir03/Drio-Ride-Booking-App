@@ -89,9 +89,13 @@ export default function LocationPermission({
   const spinning = state === "loading";
   const { reduced } = useMotionSystem();
 
-  // Show dismiss button for states where the user might want to dismiss the notice
-  // but we're not showing the primary action (e.g., denied, unavailable, unsupported)
-  const showDismiss = !showAction && (state === "denied" || state === "unavailable" || state === "unsupported");
+  // A notice the user cannot act on must always be closable, and so must one
+  // whose action can keep failing: `unavailable` shows "Try again" AND the ✕,
+  // because retrying can fail repeatedly with nothing else to end the notice.
+  // The old `!showAction &&` guard made the button unreachable for exactly that
+  // state, so the dismiss control never appeared where it was most needed.
+  const showDismiss =
+    state === "denied" || state === "unavailable" || state === "unsupported";
 
   return (
     <div

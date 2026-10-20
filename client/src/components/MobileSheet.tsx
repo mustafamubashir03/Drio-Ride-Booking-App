@@ -132,8 +132,15 @@ export default function MobileSheet({
     <div
       className={cn(
         "pointer-events-none absolute inset-x-0 bottom-0 z-20",
-        // On desktop, the sheet becomes an in-flow panel inside the layout.
-        // Reset absolute positioning and hide the mobile bottom sheet.
+        // The sheet is a mobile-only overlay. A caller that promotes it to a
+        // desktop panel passes `desktopClassName` (which carries its own lg:flex
+        // and lg:static), so the mobile sheet must stay hidden from `lg` up
+        // whenever that promotion did NOT happen. Without this the passenger
+        // sheet flows inline on a laptop beside the fixed desktop column and the
+        // From/To booking surface is rendered twice on the same screen.
+        !desktopClassName && "lg:hidden",
+        // Reset absolute positioning so a promoted panel flows in the layout
+        // instead of staying pinned to the viewport bottom.
         "lg:static lg:inset-auto lg:z-auto",
         desktopClassName,
         className,

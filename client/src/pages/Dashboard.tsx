@@ -299,6 +299,14 @@ const [reviewOpen, setReviewOpen] = useState(false);
       ? "unsupported"
       : "prompt",
   );
+  // Set by the notice's own dismiss control. Without it the dismiss button had
+  // nowhere to go: resetting `locationUi` to "prompt" left the notice on screen
+  // (it renders for every state except "granted"), so the ✕ appeared to do
+  // nothing and the warning never went away. Keyed to the state that was
+  // dismissed, so it stays dismissed for that outcome but a genuinely new one
+  // (prompt → denied, say) is still explained.
+  const [dismissedLocationUi, setDismissedLocationUi] = useState<LocationUiState | null>(null);
+  const locationNoticeDismissed = dismissedLocationUi === locationUi;
   // Kept so the sheet's "Allow location" / "Try again" reuses the exact same
   // geolocation call rather than introducing a second code path.
   const requestLocationRef = useRef<(() => void) | null>(null);
@@ -1751,17 +1759,19 @@ const [reviewOpen, setReviewOpen] = useState(false);
                 <div className="overscroll-contain pb-2 pt-1">
                   {/* Only surfaced while it is actionable: once a pickup exists
                       or location resolved, it would just be noise. */}
-                  {locationUi !== "granted" && !fromLocation && (
-                    <LocationPermission
-                      className="mb-3"
-                      state={locationUi}
-                      onRequest={() => {
-                        setLocationUi("loading");
-                        requestLocationRef.current?.();
-                      }}
-                      onDismiss={() => setLocationUi("prompt")}
-                    />
-                  )}
+                  {!locationNoticeDismissed &&
+                    locationUi !== "granted" &&
+                    !fromLocation && (
+                      <LocationPermission
+                        className="mb-3"
+                        state={locationUi}
+                        onRequest={() => {
+                          setLocationUi("loading");
+                          requestLocationRef.current?.();
+                        }}
+                        onDismiss={() => setDismissedLocationUi(locationUi)}
+                      />
+                    )}
                   {renderBookingSurface("mobile")}
                 </div>
               )}
