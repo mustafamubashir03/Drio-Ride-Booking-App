@@ -1162,51 +1162,48 @@ const [reviewOpen, setReviewOpen] = useState(false);
           <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground mb-3">
             Choose ride type
           </p>
-          <motion.div
-            className={compact ? "grid grid-cols-3 gap-2" : "grid grid-cols-3 gap-2.5"}
-            variants={stagger.container}
-            initial={reduced ? false : "hidden"}
-            animate={reduced ? undefined : "visible"}
-          >
-            {vehicleTypes.map((v) => {
-              const isSelected = vehicle === v.id;
-              const accent = vehicleAccentStyles[v.accent];
-              return (
-                <motion.button
-                  key={v.id}
-                  type="button"
-                  id={`${pfx}vehicle-${v.id}`}
-                  onClick={() => setVehicle(v.id)}
-                  variants={stagger.item}
-                  aria-pressed={isSelected}
-                  className={`flex flex-col items-start gap-1.5 rounded-2xl border p-3.5 text-left outline-none transition-[color,background-color,border-color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-safe:hover:scale-[1.01] motion-safe:active:scale-[0.99] motion-reduce:transition-none ${isSelected
-                    ? accent.selectedCard
-                    : "border-border bg-card hover:border-ring/30 hover:bg-muted/40"
-                    }`}
-                >
-                  {(() => {
-                    const vimg = (v as unknown as { img?: string }).img;
-                    return vimg ? (
-                      <img src={vimg} alt={v.label} className="h-8 w-12 object-contain rounded-sm" />
-                    ) : (
-                      <Car
-                        className={`h-5 w-5 ${isSelected
-                          ? accent.iconSelected
-                          : accent.iconIdle
-                          }`}
-                      />
-                    );
-                  })()}
-                  <span className="text-[13px] font-semibold text-foreground leading-tight">
-                    {v.label}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {v.eta}
-                  </span>
-                </motion.button>
-              );
-            })}
-          </motion.div>
+          <div className="relative">
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              {vehicleTypes.map((v) => {
+                const isSelected = vehicle === v.id;
+                const accent = vehicleAccentStyles[v.accent];
+                return (
+                  <motion.button
+                    key={v.id}
+                    type="button"
+                    id={`${pfx}vehicle-${v.id}`}
+                    onClick={() => setVehicle(v.id)}
+                    variants={stagger.item}
+                    aria-pressed={isSelected}
+                    className={`relative mt-6 flex min-w-[150px] flex-1 snap-start flex-col items-start gap-1 rounded-2xl border px-3.5 pb-3.5 pt-10 text-left outline-none transition-[color,background-color,border-color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-safe:hover:scale-[1.01] motion-safe:active:scale-[0.99] motion-reduce:transition-none ${isSelected
+                      ? accent.selectedCard
+                      : "border-border bg-card hover:border-ring/30 hover:bg-muted/40"
+                      }`}
+                  >
+                    {(() => {
+                      const vimg = (v as unknown as { img?: string }).img;
+                      return vimg ? (
+                        <img src={vimg} alt={v.label} className="absolute -top-6 left-1/2 h-14 w-20 -translate-x-1/2 object-contain bg-transparent drop-shadow-md" />
+                      ) : (
+                        <Car
+                          className={`absolute -top-4 left-1/2 h-8 w-8 -translate-x-1/2 ${isSelected
+                            ? accent.iconSelected
+                            : accent.iconIdle
+                            }`}
+                        />
+                      );
+                    })()}
+                    <span className="text-[13px] font-semibold text-foreground leading-tight">
+                      {v.label}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {v.eta}
+                    </span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </div>
         </div>
         )}
 
