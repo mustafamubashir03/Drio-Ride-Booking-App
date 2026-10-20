@@ -83,29 +83,23 @@ const navAccentStyles: Record<
 };
 
 const vehicleTypes = [
-  { id: "mini", label: "Mini", icon: Car, eta: "3 min", accent: "primary", img: "/mini.png" },
-  { id: "go", label: "Go", icon: Car, eta: "4 min", accent: "blue", img: "/Go-AC.jpg" },
-  { id: "premium", label: "Premium", icon: Car, eta: "5 min", accent: "violet", img: "/premium.jpg" },
+  { id: "mini", label: "Mini", img: "/mini.png", desc: "Affordable · Everyday" },
+  { id: "go", label: "Go", img: "/Go-AC.jpg", desc: "Comfort · AC" },
+  { id: "premium", label: "Premium", img: "/premium.jpg", desc: "Premium · Quiet" },
 ] as const;
 
 const vehicleAccentStyles: Record<
-  (typeof vehicleTypes)[number]["accent"],
-  { selectedCard: string; iconSelected: string; iconIdle: string }
+  (typeof vehicleTypes)[number]["id"],
+  { selectedCard: string }
 > = {
-  primary: {
+  mini: {
     selectedCard: "border-primary/40 bg-primary/10 ring-1 ring-primary/20",
-    iconSelected: "text-primary",
-    iconIdle: "text-primary/70",
   },
-  blue: {
+  go: {
     selectedCard: "border-drio-blue/40 bg-drio-blue/10 ring-1 ring-drio-blue/20",
-    iconSelected: "text-drio-blue",
-    iconIdle: "text-drio-blue/70",
   },
-  violet: {
+  premium: {
     selectedCard: "border-drio-violet/40 bg-drio-violet/10 ring-1 ring-drio-violet/20",
-    iconSelected: "text-drio-violet",
-    iconIdle: "text-drio-violet/70",
   },
 };
 
@@ -245,7 +239,7 @@ function TripDetailsStrip({
 
 export default function Dashboard() {
   const { data: session } = authClient.useSession();
-  const { page, stagger, reduced } = useMotionSystem();
+  const { page, reduced } = useMotionSystem();
   const user = (session as unknown as { user?: { id?: string; name?: string; email?: string; image?: string | null } })?.user;
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [vehicle, setVehicle] = useState<
@@ -1162,42 +1156,44 @@ const [reviewOpen, setReviewOpen] = useState(false);
           <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground mb-3">
             Choose ride type
           </p>
-          <div className="relative">
+            <div className="relative">
             <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {vehicleTypes.map((v) => {
                 const isSelected = vehicle === v.id;
-                const accent = vehicleAccentStyles[v.accent];
+                const accent = vehicleAccentStyles[v.id];
                 return (
                   <motion.button
                     key={v.id}
                     type="button"
                     id={`${pfx}vehicle-${v.id}`}
                     onClick={() => setVehicle(v.id)}
-                    variants={stagger.item}
+                    whileHover={{ y: -3, scale: 1.015 }}
+                    whileTap={{ scale: 0.985 }}
+                    transition={{ type: "spring", stiffness: 460, damping: 24 }}
                     aria-pressed={isSelected}
-                    className={`relative mt-6 flex min-w-[150px] flex-1 snap-start flex-col items-start gap-1 rounded-2xl border px-3.5 pb-3.5 pt-10 text-left outline-none transition-[color,background-color,border-color,box-shadow,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-safe:hover:scale-[1.01] motion-safe:active:scale-[0.99] motion-reduce:transition-none ${isSelected
+                    className={`group relative mt-8 flex min-w-[180px] flex-1 snap-start flex-col items-start gap-1 rounded-2xl border px-3.5 pb-3.5 pt-14 text-left outline-none transition-[border-color,box-shadow] duration-200 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${isSelected
                       ? accent.selectedCard
-                      : "border-border bg-card hover:border-ring/30 hover:bg-muted/40"
+                      : "border-border bg-card hover:border-ring/50 hover:bg-muted/40"
                       }`}
                   >
                     {(() => {
                       const vimg = (v as unknown as { img?: string }).img;
                       return vimg ? (
-                        <img src={vimg} alt={v.label} className="absolute -top-6 left-1/2 h-14 w-20 -translate-x-1/2 object-contain bg-transparent drop-shadow-md" />
-                      ) : (
-                        <Car
-                          className={`absolute -top-4 left-1/2 h-8 w-8 -translate-x-1/2 ${isSelected
-                            ? accent.iconSelected
-                            : accent.iconIdle
-                            }`}
+                        <motion.img
+                          src={vimg}
+                          alt={v.label}
+                          initial={false}
+                          animate={{ y: isSelected ? -6 : -2, scale: isSelected ? 1.08 : 1.02 }}
+                          transition={{ type: "spring", stiffness: 460, damping: 24 }}
+                          className="pointer-events-none absolute -top-12 left-1/2 h-24 w-32 -translate-x-1/2 object-contain bg-transparent mix-blend-multiply dark:mix-blend-screen drop-shadow-xl"
                         />
-                      );
+                      ) : null;
                     })()}
                     <span className="text-[13px] font-semibold text-foreground leading-tight">
                       {v.label}
                     </span>
                     <span className="text-[11px] text-muted-foreground">
-                      {v.eta}
+                      {(v as unknown as { desc?: string }).desc || v.label}
                     </span>
                   </motion.button>
                 );
@@ -1213,18 +1209,18 @@ const [reviewOpen, setReviewOpen] = useState(false);
             <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
               Estimated fare
             </p>
-            <p className="mt-1 font-sans text-[18px] font-bold tabular-nums text-foreground">
-              {estimatedFareLabel}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              ETA
-            </p>
-            <p className="mt-1 text-[14px] font-semibold tabular-nums text-foreground">
-              {selectedVehicle.eta}
-            </p>
-          </div>
+              <p className="mt-1 font-sans text-[18px] font-bold tabular-nums text-foreground">
+                {estimatedFareLabel}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                ETA
+              </p>
+              <p className="mt-1 text-[14px] font-semibold tabular-nums text-foreground">
+                {vehicle === "mini" ? "3 min" : vehicle === "go" ? "4 min" : "5 min"}
+              </p>
+            </div>
         </div>
 
         {/* CTA */}
@@ -2196,7 +2192,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
                       </p>
                       <p className="text-[11.5px] text-muted-foreground">{desc}</p>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground/50 transition-transform duration-150 ease-out group-hover:translate-x-0.5 shrink-0" />
                   </button>
                 ))}
               </div>
