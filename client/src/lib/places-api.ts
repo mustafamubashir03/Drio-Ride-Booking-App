@@ -42,6 +42,34 @@ export async function searchPlaces(query: string): Promise<PlaceResult[]> {
     return data.results ?? [];
 }
 
+/**
+ * Nearest named place for coordinates — used to give a dropped map pin a real
+ * name, since the pin travels to the driver as a ride's pickup/dropoff.
+ */
+export async function reverseGeocode(
+    latitude: number,
+    longitude: number,
+): Promise<PlaceResult | null> {
+    const response = await apiFetch(
+        `/api/places/reverse?lat=${latitude}&lon=${longitude}`,
+        { headers: { 'Accept': 'application/json' } },
+    );
+
+    if (!response.ok) {
+        let message = `Reverse geocoding failed (${response.status})`;
+        try {
+            const err = (await response.json()) as { message?: string };
+            if (err?.message) message = err.message;
+        } catch {
+            // fall back to the generic message
+        }
+        throw new Error(message);
+    }
+
+    const data = (await response.json()) as { place?: PlaceResult | null };
+    return data.place ?? null;
+}
+
 export type RouteLineString = {
     type: "LineString";
     coordinates: [number, number][];

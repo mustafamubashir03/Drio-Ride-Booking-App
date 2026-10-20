@@ -1,10 +1,11 @@
 import express from 'express';
-import { searchPlacesController } from '../../controllers/places.controller';
+import { reverseGeocodeController, searchPlacesController } from '../../controllers/places.controller';
 import { validateQueryParams } from '../../validators';
-import { searchPlacesQuerySchema } from '../../validators/places.validator';
+import { reverseGeocodeQuerySchema, searchPlacesQuerySchema } from '../../validators/places.validator';
 
 const placesRouter = express.Router();
 
 placesRouter.get('/search', validateQueryParams(searchPlacesQuerySchema), searchPlacesController);
+placesRouter.get('/reverse', validateQueryParams(reverseGeocodeQuerySchema), reverseGeocodeController);
 
 export default placesRouter;

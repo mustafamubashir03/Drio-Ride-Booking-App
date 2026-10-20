@@ -27,6 +27,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { formatFare } from "@/lib/format";
 import { apiFetch } from "@/lib/runtime-config";
 import type { PlaceResult, SelectedLocation, RouteResult } from "@/lib/places-api";
+import { reverseGeocode } from "@/lib/places-api";
 import {
   Home,
   History,
@@ -621,22 +622,53 @@ const [reviewOpen, setReviewOpen] = useState(false);
     if (fromLocation) setBookingError(null);
   };
 
+  // Each pin pick gets its own id, so a name resolved in the background can
+  // only land on the slot that pick was made for — never on a newer choice.
+  const mapPickSeqRef = useRef(0);
+
   const handleMapPick = (location: { latitude: number; longitude: number }) => {
-    const picked: SelectedLocation = {
-      id: "map-pin",
-      name: "Dropped pin",
-      displayName: "Dropped pin",
+    /* The pin is what the driver receives as the ride's pickup/dropoff, so it
+       cannot stay a pin label: show the pick immediately, then replace the
+       label with the nearest real place as soon as the reverse lookup lands.
+       The coordinates are never swapped — routing and the driver both follow
+       the exact point the passenger tapped. */
+    const pickId = `map-pin-${mapPickSeqRef.current++}`;
+    const provisional: SelectedLocation = {
+      id: pickId,
+      name: "Picked on map",
+      displayName: `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`,
       latitude: location.latitude,
       longitude: location.longitude,
     };
-    if (mapPickMode === "from") {
-      setFromLocation(picked);
+    const slot = mapPickMode;
+    if (slot === "from") {
+      setFromLocation(provisional);
       if (toLocation) setBookingError(null);
-    } else if (mapPickMode === "to") {
-      setToLocation(picked);
+    } else if (slot === "to") {
+      setToLocation(provisional);
       if (fromLocation) setBookingError(null);
     }
     setMapPickMode(null);
+
+    if (slot !== "from" && slot !== "to") return;
+
+    reverseGeocode(location.latitude, location.longitude)
+      .then((place) => {
+        if (!place?.name) return;
+        const resolved: SelectedLocation = {
+          ...provisional,
+          name: place.name,
+          displayName: place.displayName || place.name,
+        };
+        // Only replace the slot while it still holds this very pick.
+        const settle = (current: SelectedLocation | null) =>
+          current && current.id === pickId ? resolved : current;
+        if (slot === "from") setFromLocation(settle);
+        else setToLocation(settle);
+      })
+      .catch(() => {
+        // Keep the coordinate label: a pin without a name is still usable.
+      });
   };
 
   const handleBookRide = async () => {

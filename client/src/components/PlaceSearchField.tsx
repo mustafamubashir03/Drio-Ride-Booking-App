@@ -128,6 +128,14 @@ export default function PlaceSearchField({
     setFocused(false);
   };
 
+  // geoError forces the popover open, so clearing the message on its own left
+  // the "Use my current location" row sitting there. The ✕ means "go away",
+  // same as pressing outside: it collapses the whole popover.
+  const dismissGeoNotice = () => {
+    setGeoError(null);
+    setFocused(false);
+  };
+
   const requestLocation = () => {
     const request = geoRequestRef.current + 1;
     geoRequestRef.current = request;
@@ -193,6 +201,9 @@ export default function PlaceSearchField({
     }
     geoBusyRef.current = false;
     setGeoBusy(false);
+    // Same contract as dismissing the error row: walking away from the request
+    // collapses the popover rather than parking the retry button on screen.
+    setFocused(false);
   };
 
   const handleUseCurrentLocation = () => {
@@ -357,7 +368,7 @@ export default function PlaceSearchField({
                   <span className="min-w-0 flex-1">{geoError}</span>
                   <button
                     type="button"
-                    onClick={() => setGeoError(null)}
+                    onClick={dismissGeoNotice}
                     aria-label="Dismiss location message"
                     title="Dismiss"
                     className="-mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
