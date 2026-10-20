@@ -25,6 +25,7 @@ import { type BookingCancelledBy, type BookingDriverInfo, type BookingDriverLoca
 import { useBookingsQuery, useCancelBookingMutation, useSubmitBookingReviewMutation } from "@/hooks/queries/use-bookings";
 import { queryKeys } from "@/lib/query-keys";
 import { formatFare } from "@/lib/format";
+import { calculateFare, type RideCategory } from "@/lib/fare";
 import { apiFetch } from "@/lib/runtime-config";
 import type { PlaceResult, SelectedLocation, RouteResult } from "@/lib/places-api";
 import { reverseGeocode } from "@/lib/places-api";
@@ -84,9 +85,7 @@ const navAccentStyles: Record<
 
 const vehicleTypes = [
   { id: "mini", label: "Mini", img: "/mini.png", desc: "Affordable · Everyday" },
-  { id: "go", label: "Go", img: "/go.png", desc: "Comfort · AC" },
-  { id: "go-ac", label: "Go AC", img: "/go.png", desc: "Comfort · AC" },
-  { id: "ac", label: "AC", img: "/go.png", desc: "Comfort · AC" },
+  { id: "go", label: "Go", img: "/AC-go.png", desc: "Comfort · AC" },
   { id: "premium", label: "Premium", img: "/premium.png", desc: "Premium · Quiet" },
   { id: "pro", label: "Pro", img: "/pro.png", desc: "Executive · Premium" },
   { id: "suv", label: "SUV", img: "/suv.png", desc: "Spacious · Family" },
@@ -117,12 +116,6 @@ const vehicleAccentStyles: Record<
       selectedCard: "border-drio-violet/40 bg-drio-violet/10 ring-1 ring-drio-violet/20",
     },
   bike: {
-      selectedCard: "border-drio-blue/40 bg-drio-blue/10 ring-1 ring-drio-blue/20",
-    },
-  "go-ac": {
-      selectedCard: "border-drio-blue/40 bg-drio-blue/10 ring-1 ring-drio-blue/20",
-    },
-  ac: {
       selectedCard: "border-drio-blue/40 bg-drio-blue/10 ring-1 ring-drio-blue/20",
     },
 
@@ -1059,13 +1052,20 @@ const [reviewOpen, setReviewOpen] = useState(false);
   }, [user?.id, rideBooked, bookingsData]);
 
   const selectedVehicle = vehicleTypes.find((v) => v.id === vehicle)!;
+  
+  // Calculate fare locally using distance from route + selected vehicle category
+  const estimatedFare = route?.distance != null
+    ? calculateFare(route.distance / 1000, vehicle as RideCategory)
+    : null;
+  
   const estimatedFareLabel =
-    route?.fare != null
-      ? formatFare(route.fare)
+    estimatedFare != null
+      ? formatFare(estimatedFare)
       : routeStatus === "loading"
         ? "Calculating…"
         : "—";
-  const fareReady = routeStatus === "success" && route !== null && Number.isFinite(route.fare);
+  
+  const fareReady = routeStatus === "success" && route !== null && route.distance != null;
   const rideFareLabel =
     bookingFare === null ? estimatedFareLabel : formatFare(bookingFare);
 
@@ -1183,7 +1183,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
             Choose ride type
           </p>
             <div className="relative">
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-3 overflow-x-auto overflow-y-visible pt-12 pb-2 -mx-1 px-1 snap-x snap-mandatory touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {vehicleTypes.map((v) => {
                 const isSelected = vehicle === v.id;
                 const accent = vehicleAccentStyles[v.id];
@@ -1244,7 +1244,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
             Ride
           </p>
               <p className="mt-1 text-[13px] font-semibold tabular-nums text-foreground">
-                {vehicle === "mini" ? "Mini" : vehicle === "go" ? "Go" : vehicle === "go-ac" || vehicle === "ac" ? "Go AC" : vehicle === "premium" ? "Premium" : vehicle === "pro" ? "Pro" : vehicle === "suv" ? "SUV" : vehicle === "lux" ? "Lux" : vehicle === "bike" ? "Bike" : vehicle}
+                {vehicle === "mini" ? "Mini" : vehicle === "go" ? "Go" : vehicle === "premium" ? "Premium" : vehicle === "pro" ? "Pro" : vehicle === "suv" ? "SUV" : vehicle === "lux" ? "Lux" : vehicle === "bike" ? "Bike" : vehicle}
               </p>
         </div>
         </div>
