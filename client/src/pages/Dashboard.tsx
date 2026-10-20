@@ -85,12 +85,12 @@ const navAccentStyles: Record<
 const vehicleTypes = [
   { id: "mini", label: "Mini", img: "/mini.png", desc: "Affordable · Everyday" },
   { id: "go", label: "Go", img: "/go.png", desc: "Comfort · AC" },
-  { id: "go-ac", label: "Go AC", img: "/go-ac.png", desc: "Comfort · AC" },
-  { id: "ac", label: "AC", img: "/ac.png", desc: "Comfort · AC" },
+  { id: "go-ac", label: "Go AC", img: "/go.png", desc: "Comfort · AC" },
+  { id: "ac", label: "AC", img: "/go.png", desc: "Comfort · AC" },
   { id: "premium", label: "Premium", img: "/premium.png", desc: "Premium · Quiet" },
   { id: "pro", label: "Pro", img: "/pro.png", desc: "Executive · Premium" },
   { id: "suv", label: "SUV", img: "/suv.png", desc: "Spacious · Family" },
-  { id: "lux", label: "Lux", img: "/lux.png", desc: "Luxury · Top" },
+  { id: "lux", label: "Lux", img: "/premium.png", desc: "Luxury · Top" },
   { id: "bike", label: "Bike", img: "/bike.png", desc: "Fast · Affordable" },
 ] as const;
 
