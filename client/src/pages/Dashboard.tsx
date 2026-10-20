@@ -1548,22 +1548,34 @@ const [reviewOpen, setReviewOpen] = useState(false);
                           )}
                         </div>
                       </div>
-                    </div>
-                    
-                    {/* Vehicle Image - on right side */}
-                    {bookingDriverInfo.vehicleImage && (
-                      <div className="hidden lg:block shrink-0 ml-auto">
-                        <div className="relative h-24 w-32 rounded-xl overflow-hidden bg-muted/50 border border-border/50">
-                          <img
-                            src={bookingDriverInfo.vehicleImage}
-                            alt={bookingDriverInfo.vehicleName ?? "Vehicle"}
-                            className="h-full w-full object-cover object-center"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-black/20" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
+</div>
+                     
+                     {/* Vehicle Image - responsive: on right side on desktop, below driver on mobile */}
+                     {bookingDriverInfo.vehicleImage && (
+                       <div className="lg:hidden mt-4">
+                         <div className="relative h-20 w-28 mx-auto rounded-xl overflow-hidden bg-muted/50 border border-border/50">
+                           <img
+                             src={bookingDriverInfo.vehicleImage}
+                             alt={bookingDriverInfo.vehicleName ?? "Vehicle"}
+                             className="h-full w-full object-cover object-center"
+                           />
+                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-black/20" />
+                         </div>
+                       </div>
+                     )}
+                     {bookingDriverInfo.vehicleImage && (
+                       <div className="hidden lg:block shrink-0 ml-auto">
+                         <div className="relative h-24 w-32 rounded-xl overflow-hidden bg-muted/50 border border-border/50">
+                           <img
+                             src={bookingDriverInfo.vehicleImage}
+                             alt={bookingDriverInfo.vehicleName ?? "Vehicle"}
+                             className="h-full w-full object-cover object-center"
+                           />
+                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-black/20" />
+                         </div>
+                       </div>
+                     )}
+                   </div>
                   
                   {/* Vehicle Details - Below driver info, above rating */}
                   {(bookingDriverInfo.vehicleName || bookingDriverInfo.vehicleColor || bookingDriverInfo.vehicleNumberPlate) && (
@@ -2161,7 +2173,19 @@ const [reviewOpen, setReviewOpen] = useState(false);
                                     )}
                                   </div>
 
-                                  {/* Vehicle Image - Desktop only */}
+                                  {/* Vehicle Image - Responsive: on right side on desktop, below on mobile */}
+                                  {booking.driverInfo?.vehicleImage && (
+                                    <div className="lg:hidden w-full mt-3">
+                                      <div className="relative h-18 w-24 mx-auto rounded-lg overflow-hidden bg-muted/50 border border-border/50">
+                                        <img
+                                          src={booking.driverInfo.vehicleImage}
+                                          alt={booking.driverInfo.vehicleName ?? "Vehicle"}
+                                          className="h-full w-full object-cover object-center"
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-black/20" />
+                                      </div>
+                                    </div>
+                                  )}
                                   {booking.driverInfo?.vehicleImage && (
                                     <div className="hidden lg:block lg:flex-shrink-0 ml-4">
                                       <div className="relative h-16 w-22 rounded-lg overflow-hidden bg-muted/50 border border-border/50">
