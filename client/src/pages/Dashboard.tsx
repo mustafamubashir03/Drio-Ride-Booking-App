@@ -257,7 +257,7 @@ function TripDetailsStrip({
 
 export default function Dashboard() {
   const { data: session } = authClient.useSession();
-  const { page, reduced } = useMotionSystem();
+  const { page, reduced, stagger } = useMotionSystem();
   const user = (session as unknown as { user?: { id?: string; name?: string; email?: string; image?: string | null } })?.user;
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [vehicle, setVehicle] = useState<
@@ -1092,18 +1092,24 @@ const [reviewOpen, setReviewOpen] = useState(false);
     const compact = variant === "mobile";
     const pfx = compact ? "m-" : "";
     return (
-      <div className={compact ? "space-y-4" : "space-y-5"}>
+      <motion.div
+        {...motionStateProps({ variants: stagger.container, reduced })}
+        className={compact ? "space-y-4" : "space-y-5"}
+      >
         {/* Greeting */}
-        <div>
+        <motion.div
+          {...motionStateProps({ variants: stagger.item, reduced })}
+        >
           <p className="text-[13px] text-muted-foreground">
             Good to see you
             {user?.name ? `, ${user.name.split(" ")[0]}` : ""}. Where to
             today?
           </p>
-        </div>
+        </motion.div>
 
         {/* Address block */}
-        <div
+        <motion.div
+          {...motionStateProps({ variants: stagger.item, reduced })}
           className="rounded-2xl border border-border bg-card p-4 space-y-0"
           style={{ position: "relative" }}
         >
@@ -1140,21 +1146,33 @@ const [reviewOpen, setReviewOpen] = useState(false);
               setMapPickMode(mapPickMode === "to" ? null : "to")
             }
           />
-        </div>
+        </motion.div>
 
-        {/* Route status — expanded only. */}
         {/* Route status */}
-        <div
+        <motion.div
+          {...motionStateProps({ variants: stagger.item, reduced })}
           id={`${pfx}route-info`}
-          className="rounded-xl border border-border/70 bg-muted/25 px-4 py-3"
+          className="rounded-xl border border-border/70 bg-muted/25 px-4 py-3 transition-colors duration-200"
         >
           {routeStatus === "loading" && (
-            <p className="text-[12px] text-muted-foreground">
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="text-[12px] text-muted-foreground"
+            >
               Calculating route…
-            </p>
+            </motion.p>
           )}
           {routeStatus === "success" && route && (
-            <div className="flex items-center gap-2 text-[12px] text-foreground">
+            <motion.div
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="flex items-center gap-2 text-[12px] text-foreground"
+            >
               <span className="font-semibold text-primary">
                 {formatDistance(route.distance)}
               </span>
@@ -1162,29 +1180,57 @@ const [reviewOpen, setReviewOpen] = useState(false);
               <span className="font-medium">
                 {formatDuration(route.duration)}
               </span>
-            </div>
+            </motion.div>
           )}
           {routeStatus === "error" && (
-            <p className="text-[12px] text-destructive">
+            <motion.p
+              initial={{ opacity: 0, x: -4 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 4 }}
+              transition={{ duration: 0.15 }}
+              className="text-[12px] text-destructive"
+            >
               {routeError ?? "Could not calculate a route."}
-            </p>
+            </motion.p>
           )}
           {routeStatus === "idle" && (
-            <p className="text-[12px] text-muted-foreground">
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="text-[12px] text-muted-foreground"
+            >
               Select From and To to see the route.
-            </p>
+            </motion.p>
           )}
-        </div>
+        </motion.div>
 
         {/* Vehicle selector */}
         {routeStatus === "success" && fareReady && (
-        <div>
-          <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground mb-3">
+        <motion.div
+          {...motionStateProps({ variants: stagger.item, reduced })}
+        >
+          <motion.p
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2 }}
+            className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground mb-3"
+          >
             Choose ride type
-          </p>
+          </motion.p>
             <div className="relative">
-            <div className="flex gap-3 overflow-x-auto overflow-y-visible pt-12 pb-2 -mx-1 px-1 snap-x snap-mandatory touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              {vehicleTypes.map((v) => {
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              variants={{
+                hidden: { opacity: 0 },
+                visible: { opacity: 1, transition: { staggerChildren: reduced ? 0 : 0.06 } },
+              }}
+              className="flex gap-3 overflow-x-auto overflow-y-visible pt-12 pb-2 -mx-1 px-1 snap-x snap-mandatory touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            >
+              {vehicleTypes.map((v, idx) => {
                 const isSelected = vehicle === v.id;
                 const accent = vehicleAccentStyles[v.id];
                 return (
@@ -1197,6 +1243,10 @@ const [reviewOpen, setReviewOpen] = useState(false);
                     whileTap={{ scale: 0.985 }}
                     transition={{ type: "spring", stiffness: 460, damping: 24 }}
                     aria-pressed={isSelected}
+                    variants={{
+                      hidden: { opacity: 0, y: 20, scale: 0.95 },
+                      visible: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 400, damping: 30, delay: idx * 0.06 } },
+                    }}
                     className={`group relative mt-8 flex min-w-[180px] flex-1 snap-start flex-col items-start gap-1 rounded-2xl border px-3.5 pb-3.5 pt-14 text-left outline-none transition-[border-color,box-shadow] duration-200 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${isSelected
                       ? accent.selectedCard
                       : "border-border bg-card hover:border-ring/50 hover:bg-muted/40"
@@ -1224,54 +1274,93 @@ const [reviewOpen, setReviewOpen] = useState(false);
                   </motion.button>
                 );
               })}
-            </div>
+            </motion.div>
           </div>
-        </div>
+        </motion.div>
         )}
 
         {/* Fare estimate */}
-        <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/25 px-4 py-3">
-        <div>
+        <motion.div
+          {...motionStateProps({ variants: stagger.item, reduced })}
+          className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/25 px-4 py-3"
+        >
+        <motion.div
+          initial={{ opacity: 0, x: -8 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 8 }}
+          transition={{ duration: 0.2 }}
+        >
           <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
             Estimated fare
           </p>
-          <p className="mt-1 font-sans text-[18px] font-bold tabular-nums text-foreground">
+          <motion.p
+            key={estimatedFareLabel}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="mt-1 font-sans text-[18px] font-bold tabular-nums text-foreground"
+          >
             {estimatedFareLabel}
-          </p>
-        </div>
-        <div className="text-right">
+          </motion.p>
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, x: 8 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -8 }}
+          transition={{ duration: 0.2 }}
+          className="text-right"
+        >
           <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
             Ride
           </p>
-              <p className="mt-1 text-[13px] font-semibold tabular-nums text-foreground">
+              <motion.p
+                key={vehicle}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.15 }}
+                className="mt-1 text-[13px] font-semibold tabular-nums text-foreground"
+              >
                 {vehicle === "mini" ? "Mini" : vehicle === "go" ? "Go" : vehicle === "premium" ? "Premium" : vehicle === "pro" ? "Pro" : vehicle === "suv" ? "SUV" : vehicle === "lux" ? "Lux" : vehicle === "bike" ? "Bike" : vehicle}
-              </p>
-        </div>
-        </div>
+              </motion.p>
+        </motion.div>
+        </motion.div>
 
         {/* CTA */}
-        <Button
-          id={`${pfx}search-ride-btn`}
-          size="lg"
-          className="w-full rounded-2xl text-[14px] font-semibold tracking-wide hover:scale-[1.01]"
-          onClick={handleBookRide}
-          disabled={bookingState === "loading" || rideBooked || !fareReady}
+        <motion.div
+          {...motionStateProps({ variants: stagger.item, reduced })}
+          whileHover={{ scale: fareReady && !rideBooked ? 1.01 : 1 }}
+          whileTap={{ scale: 0.985 }}
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
         >
-          {bookingState === "loading"
-            ? "Booking ride…"
-            : rideBooked
-              ? "Searching for a driver…"
-              : "Search for a ride"}
-        </Button>
+          <Button
+            size="lg"
+            id={`${pfx}search-ride-btn`}
+            className={`w-full rounded-2xl text-[14px] font-semibold tracking-wide ${fareReady && !rideBooked ? "animate-pulse-subtle" : ""}`}
+            onClick={handleBookRide}
+            disabled={bookingState === "loading" || rideBooked || !fareReady}
+          >
+            {bookingState === "loading"
+              ? "Booking ride…"
+              : rideBooked
+                ? "Searching for a driver…"
+                : "Search for a ride"}
+          </Button>
+        </motion.div>
         {bookingError && (
-          <p
+          <motion.p
             id={`${pfx}booking-error`}
+            initial={{ opacity: 0, y: 4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
             className="text-[12px] text-destructive"
           >
             {bookingError}
-          </p>
+          </motion.p>
         )}
-      </div>
+      </motion.div>
     );
   };
 
