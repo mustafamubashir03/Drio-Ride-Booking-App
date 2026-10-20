@@ -51,9 +51,17 @@ const serializePassengerRide = (booking: any) => {
     const id = Types.ObjectId.isValid(booking._id) ? new Types.ObjectId(booking._id) : booking._id;
     const driver =
         booking.driver && typeof booking.driver === "object"
-            ? { _id: String(booking.driver._id), name: booking.driver.name ?? null, image: booking.driver.image ?? null }
+            ? { 
+                _id: String(booking.driver._id), 
+                name: booking.driver.name ?? null, 
+                image: booking.driver.image ?? null,
+                vehicleName: booking.driver.vehicleName ?? null,
+                vehicleColor: booking.driver.vehicleColor ?? null,
+                vehicleNumberPlate: booking.driver.vehicleNumberPlate ?? null,
+                vehicleImage: booking.driver.vehicleImage ?? null,
+              }
             : booking.driver
-            ? { _id: String(booking.driver), name: null, image: null }
+            ? { _id: String(booking.driver), name: null, image: null, vehicleName: null, vehicleColor: null, vehicleNumberPlate: null, vehicleImage: null }
             : null;
     return {
         _id: id.toString(),
@@ -63,7 +71,14 @@ const serializePassengerRide = (booking: any) => {
         fare: booking.fare ?? null,
         distance: booking.distance ?? null,
         driver: driver ? driver._id : null,
-        driverInfo: driver ? { name: driver.name, image: driver.image } : null,
+        driverInfo: driver ? { 
+            name: driver.name, 
+            image: driver.image,
+            vehicleName: driver.vehicleName,
+            vehicleColor: driver.vehicleColor,
+            vehicleNumberPlate: driver.vehicleNumberPlate,
+            vehicleImage: driver.vehicleImage,
+        } : null,
         passenger:
             booking.passenger && typeof booking.passenger === "object"
                 ? { _id: String(booking.passenger._id), name: booking.passenger.name ?? null, email: booking.passenger.email ?? null }

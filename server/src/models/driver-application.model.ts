@@ -27,6 +27,10 @@ interface DriverApplication {
     documents?: DriverApplicationDocument[];
     // Ride category the driver is eligible for. Backward compatible.
     vehicleType?: 'mini' | 'go' | 'go-ac' | 'ac' | 'premium' | 'pro' | 'suv' | 'lux' | 'bike' | string;
+    vehicleName?: string;
+    vehicleColor?: string;
+    vehicleNumberPlate?: string;
+    vehicleImage?: string;
     availabilityStatus?: DriverAvailabilityStatus;
     availabilityUpdatedAt?: Date | null;
 }
@@ -69,6 +73,10 @@ const driverApplicationSchema = new Schema<DriverApplication>({
         type: String,
         default: 'mini',
     },
+    vehicleName: { type: String, default: null },
+    vehicleColor: { type: String, default: null },
+    vehicleNumberPlate: { type: String, default: null },
+    vehicleImage: { type: String, default: null },
     availabilityStatus: {
         type: String,
         enum: DRIVER_AVAILABILITY_STATUSES,

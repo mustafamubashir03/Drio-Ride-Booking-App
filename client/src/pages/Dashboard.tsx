@@ -1510,38 +1510,105 @@ const [reviewOpen, setReviewOpen] = useState(false);
             ) : null}
 
             {bookingDriverInfo ? (
-              <div className="mt-4 flex min-w-0 items-center gap-3 rounded-2xl border border-border/70 bg-muted/25 px-3.5 py-3">
-                <Avatar size="lg">
-                  {bookingDriverInfo.image ? (
-                    <AvatarImage src={bookingDriverInfo.image} alt="" />
-                  ) : null}
-                  <AvatarFallback className="bg-drio-success/15 text-[13px] font-bold text-drio-success">
-                    {(bookingDriverInfo.name ?? "D").charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                    Driver
-                  </p>
-                  <p className="truncate text-[14px] font-semibold text-foreground">
-                    {bookingDriverInfo.name ?? "Driver"}
-                  </p>
-                  <div className="mt-0.5 flex items-center gap-1 text-[11.5px] text-muted-foreground">
-                    {bookingDriverRating?.average != null && bookingDriverRating.count > 0 ? (
-                      <>
-                        <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-                        <span className="font-semibold text-foreground">
-                          {bookingDriverRating.average.toFixed(1)}
-                        </span>
-                        <span>
-                          · {bookingDriverRating.count}{" "}
-                          {bookingDriverRating.count === 1 ? "rating" : "ratings"}
-                        </span>
-                      </>
-                    ) : (
-                      <span>New driver</span>
+              <div className="mt-4">
+                {/* Driver Card with Vehicle Info */}
+                <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/30 p-4 shadow-sm">
+                  <div className="flex items-start gap-4">
+                    {/* Driver Avatar */}
+                    <Avatar size="lg" className="shrink-0">
+                      {bookingDriverInfo.image ? (
+                        <AvatarImage src={bookingDriverInfo.image} alt="" />
+                      ) : null}
+                      <AvatarFallback className="bg-drio-success/15 text-[13px] font-bold text-drio-success">
+                        {(bookingDriverInfo.name ?? "D").charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    
+                    {/* Driver Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                        Driver
+                      </p>
+                      <p className="truncate text-[14px] font-semibold text-foreground">
+                        {bookingDriverInfo.name ?? "Driver"}
+                      </p>
+                      <div className="mt-0.5 flex items-center gap-1 text-[11.5px] text-muted-foreground">
+                        {bookingDriverRating?.average != null && bookingDriverRating.count > 0 ? (
+                          <>
+                            <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                            <span className="font-semibold text-foreground">
+                              {bookingDriverRating.average.toFixed(1)}
+                            </span>
+                            <span>
+                              · {bookingDriverRating.count}{" "}
+                              {bookingDriverRating.count === 1 ? "rating" : "ratings"}
+                            </span>
+                          </>
+                        ) : (
+                          <span>New driver</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Vehicle Image - only on desktop for space */}
+                    {bookingDriverInfo.vehicleImage && (
+                      <div className="hidden lg:block shrink-0">
+                        <div className="relative h-20 w-28 rounded-xl overflow-hidden bg-muted/50 border border-border/50">
+                          <img
+                            src={bookingDriverInfo.vehicleImage}
+                            alt={bookingDriverInfo.vehicleName ?? "Vehicle"}
+                            className="h-full w-full object-cover object-center"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-black/20" />
+                        </div>
+                      </div>
                     )}
                   </div>
+                  
+                  {/* Vehicle Details Row */}
+                  {(bookingDriverInfo.vehicleName || bookingDriverInfo.vehicleColor || bookingDriverInfo.vehicleNumberPlate) && (
+                    <div className="mt-4 pt-4 border-t border-border/50">
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                        {bookingDriverInfo.vehicleName && (
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center">
+                              <Car className="h-4 w-4 text-primary" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Car</p>
+                              <p className="text-[12px] font-semibold text-foreground truncate">{bookingDriverInfo.vehicleName}</p>
+                            </div>
+                          </div>
+                        )}
+                        {bookingDriverInfo.vehicleColor && (
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center">
+                              <div 
+                                className="h-4 w-4 rounded" 
+                                style={{ backgroundColor: bookingDriverInfo.vehicleColor.toLowerCase() }}
+                                title={bookingDriverInfo.vehicleColor}
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Color</p>
+                              <p className="text-[12px] font-semibold text-foreground">{bookingDriverInfo.vehicleColor}</p>
+                            </div>
+                          </div>
+                        )}
+                        {bookingDriverInfo.vehicleNumberPlate && (
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center">
+                              <span className="text-[10px] font-mono font-bold text-primary">#</span>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Plate</p>
+                              <p className="text-[12px] font-mono font-semibold text-foreground tracking-wider">{bookingDriverInfo.vehicleNumberPlate}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -2051,20 +2118,48 @@ const [reviewOpen, setReviewOpen] = useState(false);
                                          {formatPlace(booking.destination)}
                                        </p>
                                      </div>
-                                    {booking.driverInfo && (
-                                         <p className="mt-1.5 flex min-w-0 items-center gap-1 text-[11.5px] text-muted-foreground">
-                                          <span className="min-w-0 truncate font-medium text-foreground/80">{booking.driverInfo.name ?? "Driver"}</span>
-                                        {booking.driverRating?.average != null && booking.driverRating.count > 0 ? (
-                                          <>
-                                            <span>·</span>
-                                             <Star aria-hidden="true" className="h-3 w-3 fill-amber-500 text-amber-500" />
-                                            <span className="font-semibold text-foreground">
-                                              {booking.driverRating.average.toFixed(1)}
-                                            </span>
-                                          </>
-                                        ) : null}
-                                      </p>
-                                    )}
+{booking.driverInfo && (
+                                          <div className="mt-1.5 space-y-1.5">
+                                            <p className="flex min-w-0 items-center gap-1 text-[11.5px] text-muted-foreground">
+                                             <span className="min-w-0 truncate font-medium text-foreground/80">{booking.driverInfo.name ?? "Driver"}</span>
+                                             {booking.driverRating?.average != null && booking.driverRating.count > 0 ? (
+                                               <>
+                                                 <span>·</span>
+                                                  <Star aria-hidden="true" className="h-3 w-3 fill-amber-500 text-amber-500" />
+                                                 <span className="font-semibold text-foreground">
+                                                   {booking.driverRating.average.toFixed(1)}
+                                                 </span>
+                                               </>
+                                             ) : null}
+                                           </p>
+                                           {(booking.driverInfo.vehicleName || booking.driverInfo.vehicleColor || booking.driverInfo.vehicleNumberPlate) && (
+                                             <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                                               {booking.driverInfo.vehicleName && (
+                                                 <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted/50 border border-border/50">
+                                                   <Car className="h-3 w-3 text-primary/80" />
+                                                   <span className="font-medium text-foreground truncate max-w-[140px]">{booking.driverInfo.vehicleName}</span>
+                                                 </span>
+                                               )}
+                                               {booking.driverInfo.vehicleColor && (
+                                                 <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted/50 border border-border/50">
+                                                   <span 
+                                                     className="h-2.5 w-2.5 rounded-full border border-border/30" 
+                                                     style={{ backgroundColor: booking.driverInfo.vehicleColor.toLowerCase() }}
+                                                     title={booking.driverInfo.vehicleColor}
+                                                   />
+                                                   <span className="font-medium text-foreground">{booking.driverInfo.vehicleColor}</span>
+                                                 </span>
+                                               )}
+                                               {booking.driverInfo.vehicleNumberPlate && (
+                                                 <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted/50 border border-border/50 font-mono">
+                                                   <span className="text-[9px] font-bold text-primary/80">#</span>
+                                                   <span className="font-semibold text-foreground tracking-wider">{booking.driverInfo.vehicleNumberPlate}</span>
+                                                 </span>
+                                               )}
+                                             </div>
+                                           )}
+                                         </div>
+                                     )}
                                   </div>
 
                                    <div className="flex w-full min-w-0 max-w-full shrink-0 flex-col items-end gap-1.5 max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:items-center max-sm:gap-2 sm:w-auto">

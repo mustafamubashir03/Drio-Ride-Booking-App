@@ -18,6 +18,10 @@ interface User {
     banExpires?: Date | null;
     // Optional vehicle category if user is a driver
     vehicleType?: string;
+    vehicleName?: string;
+    vehicleColor?: string;
+    vehicleNumberPlate?: string;
+    vehicleImage?: string;
     location?: {
         type: "Point";
         coordinates: number[];

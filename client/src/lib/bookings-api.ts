@@ -17,6 +17,10 @@ export type DriverRatingSummary = {
 export type BookingDriverInfo = {
     name: string | null;
     image: string | null;
+    vehicleName: string | null;
+    vehicleColor: string | null;
+    vehicleNumberPlate: string | null;
+    vehicleImage: string | null;
 } | null;
 
 export type BookingDriverLocation = {

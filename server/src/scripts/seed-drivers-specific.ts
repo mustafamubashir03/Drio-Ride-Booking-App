@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import User from '../models/user.model';
 import DriverApplicationModel from '../models/driver-application.model';
+import { getRandomCarDetails } from '../lib/vehicle-utils';
 
 dotenv.config();
 
@@ -13,13 +14,14 @@ async function run() {
     const mustafa = await User.findOne({ email: 'mustafamubashir87@gmail.com' });
     if (mustafa) {
         mustafa.role = 'driver';
-        (mustafa as any).vehicleType = 'mini';
-        (mustafa as any).vehicleName = 'Toyota Corolla Altis';
-        (mustafa as any).vehicleColor = 'White';
-        (mustafa as any).vehicleNumberPlate = 'ABC-1234';
-        (mustafa as any).vehicleImage = '/mini.png';
+        const carDetails = getRandomCarDetails('mini');
+        mustafa.vehicleType = 'mini';
+        mustafa.vehicleName = carDetails.vehicleName;
+        mustafa.vehicleColor = carDetails.vehicleColor;
+        mustafa.vehicleNumberPlate = carDetails.vehicleNumberPlate;
+        mustafa.vehicleImage = carDetails.vehicleImage;
         await mustafa.save();
-        console.log('Updated mustafa driver:', mustafa.email);
+        console.log('Updated mustafa driver:', mustafa.email, carDetails);
     } else {
         console.log('mustafamubashir87@gmail.com not found');
     }
@@ -27,13 +29,14 @@ async function run() {
     const saif = await User.findOne({ email: /saifullah/i }) || await User.findOne({ name: /saifullah/i });
     if (saif) {
         saif.role = 'driver';
-        (saif as any).vehicleType = 'bike';
-        (saif as any).vehicleName = 'Honda CB125F';
-        (saif as any).vehicleColor = 'Red';
-        (saif as any).vehicleNumberPlate = 'BIKE-5678';
-        (saif as any).vehicleImage = '/bike.png';
+        const carDetails = getRandomCarDetails('bike');
+        saif.vehicleType = 'bike';
+        saif.vehicleName = carDetails.vehicleName;
+        saif.vehicleColor = carDetails.vehicleColor;
+        saif.vehicleNumberPlate = carDetails.vehicleNumberPlate;
+        saif.vehicleImage = carDetails.vehicleImage;
         await saif.save();
-        console.log('Updated saifullah:', (saif as any).email);
+        console.log('Updated saifullah:', (saif as any).email, carDetails);
     } else {
         console.log('saifullah not found');
     }
@@ -43,23 +46,47 @@ async function run() {
         const user: any = app.user;
         if (!user?.email) continue;
         if (user.email === 'mustafamubashir87@gmail.com') {
+            const carDetails = getRandomCarDetails('mini');
             app.vehicleType = 'mini';
-            (app as any).status = 'approved';
-            (app as any).vehicleName = 'Toyota Corolla Altis';
-            (app as any).vehicleColor = 'White';
-            (app as any).vehicleNumberPlate = 'ABC-1234';
-            (app as any).vehicleImage = '/mini.png';
+            app.status = 'approved';
+            app.vehicleName = carDetails.vehicleName;
+            app.vehicleColor = carDetails.vehicleColor;
+            app.vehicleNumberPlate = carDetails.vehicleNumberPlate;
+            app.vehicleImage = carDetails.vehicleImage;
             await app.save();
-            console.log('Updated application for mustafa');
+            console.log('Updated application for mustafa:', carDetails);
         } else if (/saifullah/i.test(user.email) || /saifullah/i.test(user.name || '')) {
+            const carDetails = getRandomCarDetails('bike');
             app.vehicleType = 'bike';
-            (app as any).status = 'approved';
-            (app as any).vehicleName = 'Honda CB125F';
-            (app as any).vehicleColor = 'Red';
-            (app as any).vehicleNumberPlate = 'BIKE-5678';
-            (app as any).vehicleImage = '/bike.png';
+            app.status = 'approved';
+            app.vehicleName = carDetails.vehicleName;
+            app.vehicleColor = carDetails.vehicleColor;
+            app.vehicleNumberPlate = carDetails.vehicleNumberPlate;
+            app.vehicleImage = carDetails.vehicleImage;
             await app.save();
-            console.log('Updated application for saifullah');
+            console.log('Updated application for saifullah:', carDetails);
+        } else {
+            const carDetails = getRandomCarDetails(app.vehicleType || 'mini');
+            app.vehicleName = carDetails.vehicleName;
+            app.vehicleColor = carDetails.vehicleColor;
+            app.vehicleNumberPlate = carDetails.vehicleNumberPlate;
+            app.vehicleImage = carDetails.vehicleImage;
+            await app.save();
+            console.log(`Updated application for ${user.email} (${app.vehicleType}):`, carDetails);
+        }
+    }
+
+    // Update all existing drivers with vehicle details
+    const allDrivers = await User.find({ role: 'driver' });
+    for (const driver of allDrivers) {
+        if (!driver.vehicleName || !driver.vehicleColor || !driver.vehicleNumberPlate) {
+            const carDetails = getRandomCarDetails(driver.vehicleType || 'mini');
+            driver.vehicleName = carDetails.vehicleName;
+            driver.vehicleColor = carDetails.vehicleColor;
+            driver.vehicleNumberPlate = carDetails.vehicleNumberPlate;
+            driver.vehicleImage = carDetails.vehicleImage;
+            await driver.save();
+            console.log(`Updated driver ${driver.email} with random car:`, carDetails);
         }
     }
 
