@@ -182,6 +182,19 @@ export default function PlaceSearchField({
     }, 12000);
   };
 
+  const cancelLocationRequest = () => {
+    // Supersede whatever is in flight: its callbacks check the token before
+    // doing anything, so a late geolocation result becomes a no-op instead of
+    // resurrecting a request the user has already walked away from.
+    geoRequestRef.current += 1;
+    if (geoWatchdogRef.current !== null) {
+      window.clearTimeout(geoWatchdogRef.current);
+      geoWatchdogRef.current = null;
+    }
+    geoBusyRef.current = false;
+    setGeoBusy(false);
+  };
+
   const handleUseCurrentLocation = () => {
     // A fresh attempt supersedes anything still in flight, so a fix from an
     // earlier press cannot land in the middle of this one.
@@ -304,19 +317,41 @@ export default function PlaceSearchField({
               variants={popover}
               className="absolute left-0 right-0 top-full z-30 mt-2 rounded-xl border border-border bg-popover p-0 overflow-hidden shadow-2xl"
             >
-              {variant === "from" && (
-                <button
-                  type="button"
-                  onClick={handleUseCurrentLocation}
-                  disabled={geoBusy}
-                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-secondary/70 transition-colors border-b border-border disabled:opacity-60"
-                >
-                  <LocateFixed className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <span className="block text-[13px] font-semibold text-foreground">
-                    {geoBusy ? "Getting your location…" : "Use my current location"}
-                  </span>
-                </button>
-              )}
+              {/* Offered only while nothing has been chosen yet: once a pin or a
+                  picked result exists, this row would just be a way to undo the
+                  user's selection by accident, so it leaves with the selection.
+                  While a request is in flight the same slot keeps a visible
+                  cancel, because the browser gives no guarantee the request
+                  ever answers. */}
+              {variant === "from" && !selectedLocation &&
+                (geoBusy ? (
+                  <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+                    <LocateFixed className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span className="block min-w-0 flex-1 text-[13px] font-semibold text-foreground">
+                      Getting your location…
+                    </span>
+                    <button
+                      type="button"
+                      onClick={cancelLocationRequest}
+                      aria-label="Cancel location request"
+                      title="Cancel"
+                      className="-mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-secondary hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleUseCurrentLocation}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-secondary/70 transition-colors border-b border-border"
+                  >
+                    <LocateFixed className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span className="block text-[13px] font-semibold text-foreground">
+                      Use my current location
+                    </span>
+                  </button>
+                ))}
               {geoError && (
                 <div className="flex items-start gap-2 border-b border-border px-4 py-3 text-[12px] text-destructive">
                   <span className="min-w-0 flex-1">{geoError}</span>

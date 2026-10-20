@@ -1219,7 +1219,13 @@ const [reviewOpen, setReviewOpen] = useState(false);
     const pfx = compact ? "m-" : "";
     const panelClass = compact
       ? "px-4 py-4"
-      : "flex justify-center border-t border-border bg-transparent px-6 py-4";
+      /* Desktop renders into the strip that floats over the map, so the surface
+         has to carry its own card: a0956ad swapped this for
+         `flex justify-center ... bg-transparent`, which put every block child
+         (headline, cancel, driver card, trip details) into ONE row and left the
+         whole thing see-through over the map — crammed and invisible. It is a
+         centred floating card now, and the children stack as blocks again. */
+      : "mx-auto my-4 w-[calc(100%_-_2rem)] max-w-2xl rounded-2xl border border-border bg-card p-5 shadow-2xl";
     return (
       <AnimatePresence>
         {rideBooked && findingDriver && (
