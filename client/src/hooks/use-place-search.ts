@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { searchPlaces, type PlaceResult } from '@/lib/places-api';
 
-const DEBOUNCE_MS = 350;
+const DEBOUNCE_MS = 300;
 const MIN_QUERY_LENGTH = 2;
 
 export type PlaceSearchStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';

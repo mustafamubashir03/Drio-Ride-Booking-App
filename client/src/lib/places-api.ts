@@ -87,12 +87,16 @@ export type RouteRequestError = {
 };
 
 export async function fetchRoute(
-    from: SelectedLocation,
-    to: SelectedLocation,
-): Promise<RouteResult> {
-    const url =
-        `/api/routes?from=${from.longitude},${from.latitude}` +
-        `&to=${to.longitude},${to.latitude}`;
+  from: SelectedLocation,
+  to: SelectedLocation,
+  category?: string,
+  ): Promise<RouteResult> {
+  const params = new URLSearchParams({
+    from: `${from.longitude},${from.latitude}`,
+    to: `${to.longitude},${to.latitude}`,
+  });
+  if (category) params.set('category', category);
+  const url = `/api/routes?${params.toString()}`;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 12000);
     let response: Response;

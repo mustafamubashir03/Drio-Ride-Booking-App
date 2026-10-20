@@ -27,7 +27,8 @@ export const getRouteController = async (req: Request, res: Response, next: Next
     try {
         const from = parseCoordinatePair(req.query.from, "from");
         const to = parseCoordinatePair(req.query.to, "to");
-        const route = await getRoute(from, to);
+        const category = typeof req.query.category === "string" ? req.query.category : undefined;
+        const route = await getRoute(from, to, category as any);
         res.status(200).json({ success: true, route });
     } catch (error) {
         next(error);

@@ -336,6 +336,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
   const { route, status: routeStatus, error: routeError } = useRoute(
     fromLocation,
     toLocation,
+    vehicle
   );
 
   const revealFieldInContainer = (container: HTMLDivElement, field: HTMLElement) => {

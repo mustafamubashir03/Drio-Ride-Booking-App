@@ -88,7 +88,7 @@ const normalizeOsrmResponse = (data: unknown, url: string): RouteDetails => {
     };
 };
 
-export const getRoute = async (from: RouteCoordinates, to: RouteCoordinates): Promise<RouteResult> => {
+export const getRoute = async (from: RouteCoordinates, to: RouteCoordinates, category?: any): Promise<RouteResult> => {
     const url = buildOsrmUrl(from, to);
 
     let response: Response;
@@ -115,6 +115,6 @@ export const getRoute = async (from: RouteCoordinates, to: RouteCoordinates): Pr
     const route = normalizeOsrmResponse(data, url);
     return {
         ...route,
-        fare: calculateFare(from.latitude, from.longitude, to.latitude, to.longitude),
+        fare: calculateFare(from.latitude, from.longitude, to.latitude, to.longitude, category),
     };
 };

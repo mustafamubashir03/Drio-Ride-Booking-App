@@ -3,7 +3,7 @@ import { fetchRoute, type RouteResult, type SelectedLocation } from '@/lib/place
 
 export type RouteStatus = 'idle' | 'loading' | 'success' | 'error';
 
-export function useRoute(from: SelectedLocation | null, to: SelectedLocation | null) {
+export function useRoute(from: SelectedLocation | null, to: SelectedLocation | null, category?: string) {
     const [route, setRoute] = useState<RouteResult | null>(null);
     const [status, setStatus] = useState<RouteStatus>('idle');
     const [error, setError] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export function useRoute(from: SelectedLocation | null, to: SelectedLocation | n
             setStatus('loading');
             setError(null);
 
-            fetchRoute(from!, to!)
+            fetchRoute(from!, to!, category)
                 .then((result) => {
                     if (cancelled || seq !== requestSeq.current) return;
                     setRoute(result);
@@ -59,7 +59,7 @@ export function useRoute(from: SelectedLocation | null, to: SelectedLocation | n
         };
         // from/to are used only while both are set; guarded by fromKey/toKey
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fromKey, toKey]);
+    }, [fromKey, toKey, category]);
 
     return { route, status, error };
 }
