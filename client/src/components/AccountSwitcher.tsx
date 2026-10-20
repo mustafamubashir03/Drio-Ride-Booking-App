@@ -263,7 +263,7 @@ export function AccountSwitcher({
         className={
           compact
             ? "flex h-11 items-center gap-2 rounded-full border border-border/70 bg-card/70 py-1 pl-1 pr-2.5 text-left transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 motion-safe:active:scale-[0.98]"
-            : "flex h-8 items-center gap-1.5 rounded-lg px-1.5 text-left transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            : "flex h-8 min-w-0 max-w-full items-center gap-1.5 rounded-lg px-1.5 text-left transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
         }
       >
         <span className="relative shrink-0">
@@ -306,7 +306,7 @@ export function AccountSwitcher({
           </span>
         ) : (
           <>
-            <span className="text-[13px] font-medium">{displayName}</span>
+            <span className="min-w-0 truncate text-[13px] font-medium">{displayName}</span>
             <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
           </>
         )}

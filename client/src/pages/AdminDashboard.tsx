@@ -1,6 +1,4 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { authClient } from "@/lib/auth-client";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +34,6 @@ import {
   Inbox,
   LayoutDashboard,
   Loader2,
-  LogOut,
   NotebookPen,
   RefreshCw,
   Shield,
@@ -352,11 +349,7 @@ function ReviewDecisionCard({
 }
 
 export default function AdminDashboard() {
-  const { data: session } = authClient.useSession();
   const { page, stagger, reduced } = useMotionSystem();
-  const admin = (session as unknown as {
-    user?: { name?: string; email?: string };
-  })?.user;
 
   // Admin driver-application data is stable server state: it changes when an
   // admin acts, and the same overview counters back both the summary tiles and
@@ -410,10 +403,6 @@ export default function AdminDashboard() {
   const changePage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(totalPages, page)));
     setSelectedId(null);
-  };
-
-  const handleSignOut = async () => {
-    await authClient.signOut({ disableRedirect: false, callbackURL: "/login" });
   };
 
   const filterCount = (id: Filter) => {
@@ -486,37 +475,13 @@ export default function AdminDashboard() {
           </p>
         </div>
 
+        {/* Account control: exactly ONE. Same pattern as the passenger and
+            driver sidebars: a static avatar/name/"Admin" row above the switcher
+            showed the admin their own name twice, so the switcher's trigger is
+            the only control here and its menu already offers the passenger app
+            and Sign out. */}
         <div className="border-t border-border px-3 py-3 shrink-0">
-          <div className="flex items-center gap-2.5 rounded-xl px-2 py-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-[11px] font-bold text-primary">
-              {(admin?.name ?? "A").charAt(0).toUpperCase()}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-foreground leading-tight">
-                {admin?.name ?? "Admin"}
-              </p>
-              <p className="truncate text-[11px] text-muted-foreground">Admin</p>
-            </div>
-          </div>
-          <AccountSwitcher>
-            <Link to="/dashboard" className="mt-1 block">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start text-muted-foreground"
-              >
-                <Car className="h-3.5 w-3.5" />
-                Passenger app
-              </Button>
-            </Link>
-            <button
-              onClick={handleSignOut}
-              className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[12px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-destructive/8 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none"
-            >
-              <LogOut className="h-3.5 w-3.5" aria-hidden />
-              Sign out
-            </button>
-          </AccountSwitcher>
+          <AccountSwitcher alwaysShowTrigger />
         </div>
       </aside>
 
