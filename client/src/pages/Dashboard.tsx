@@ -1715,6 +1715,7 @@ const [reviewOpen, setReviewOpen] = useState(false);
                 route={route}
                 pickMode={mapPickMode}
                 onPickPoint={handleMapPick}
+                onPickCancel={() => setMapPickMode(null)}
                 searching={findingDriver}
                 driverLocation={driverLocation}
                 navRoute={passengerNavRoute}

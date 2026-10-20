@@ -14,7 +14,7 @@ import {
 } from "maplibre-gl"
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url"
 import "maplibre-gl/dist/maplibre-gl.css"
-import { Moon, Sun } from "lucide-react"
+import { Moon, Sun, X } from "lucide-react"
 import { animate, type AnimationPlaybackControls } from "motion"
 import { cn } from "@/lib/utils"
 import carPointerUrl from "@/assets/car-pointer.png"
@@ -476,6 +476,8 @@ interface MapProps {
   navPhaseId?: string | null
   pickMode?: "from" | "to" | null
   onPickPoint?: (location: { latitude: number; longitude: number }) => void
+  /** Leaves pin-placing mode without dropping a point. */
+  onPickCancel?: () => void
   /** Live driver position, rendered as a rotating vehicle marker without moving the camera. */
   driverLocation?: {
     latitude: number
@@ -504,6 +506,7 @@ export default function Map({
   navPhaseId = null,
   pickMode = null,
   onPickPoint,
+  onPickCancel,
   driverLocation = null,
   followDriver = false,
   searching = false,
@@ -1238,9 +1241,22 @@ export default function Map({
         )}
       </button>
       {pickMode && (
-        <div className="pointer-events-none absolute left-[60px] top-2 z-10 rounded-lg border border-primary/25 bg-card/95 px-3 py-1.5 text-[12px] font-medium text-foreground shadow-sm backdrop-blur lg:left-[52px]">
-          Click the map to set your{" "}
-          {pickMode === "from" ? "pickup" : "destination"} location
+        <div className="pointer-events-none absolute left-[60px] top-2 z-10 flex items-center gap-1.5 rounded-lg border border-primary/25 bg-card/95 px-3 py-1.5 text-[12px] font-medium text-foreground shadow-sm backdrop-blur lg:left-[52px]">
+          <span>
+            Click the map to set your{" "}
+            {pickMode === "from" ? "pickup" : "destination"} location
+          </span>
+          {onPickCancel && (
+            <button
+              type="button"
+              onClick={onPickCancel}
+              title="Cancel placing this location"
+              aria-label="Cancel placing this location"
+              className="pointer-events-auto -mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       )}
       {geoStatus && (

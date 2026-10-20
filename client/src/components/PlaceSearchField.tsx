@@ -40,10 +40,26 @@ export default function PlaceSearchField({
   const [geoError, setGeoError] = useState<string | null>(null);
   const geoBusyRef = useRef(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // Identifies the in-flight "use my current location" request. Anything that
+  // supersedes it — a newer request, a pin dropped on the map, or the watchdog
+  // below — advances this counter, which is what turns a late geolocation
+  // callback into a no-op instead of something that overwrites a newer choice
+  // or leaves the row stuck on "Getting your location…" forever.
+  const geoRequestRef = useRef(0);
+  const geoWatchdogRef = useRef<number | null>(null);
+  // The last selection this field was told about, so a pickup set from OUTSIDE
+  // it (a pin dropped on the map) is recognised as an external change.
+  const syncedSelectionRef = useRef<SelectedLocation | null>(null);
 
   useEffect(() => {
     geoBusyRef.current = geoBusy;
   }, [geoBusy]);
+
+  useEffect(() => {
+    return () => {
+      if (geoWatchdogRef.current !== null) window.clearTimeout(geoWatchdogRef.current);
+    };
+  }, []);
 
   // The popover is forced open while `geoError` is set, so without a dismissal
   // path the notice never leaves the screen. Pressing anywhere outside the
@@ -58,6 +74,29 @@ export default function PlaceSearchField({
     document.addEventListener("mousedown", handleOutsidePress);
     return () => document.removeEventListener("mousedown", handleOutsidePress);
   }, [geoError]);
+
+  // This field owns only its own `text`, while the selection is owned by the
+  // parent — so a pin dropped on the map changes `selectedLocation` without
+  // touching `text`, and the row would keep showing the previous value whenever
+  // the input is focused. Syncing here is what makes From show the picked
+  // position. It also settles the race with an in-flight "use my current
+  // location": the deliberate, newer selection wins and the pending fix is
+  // dropped rather than arriving late and overwriting it.
+  useEffect(() => {
+    if (!selectedLocation) {
+      syncedSelectionRef.current = null;
+      return;
+    }
+    if (syncedSelectionRef.current === selectedLocation) return;
+    syncedSelectionRef.current = selectedLocation;
+    setText(selectedLocation.name);
+    setGeoError(null);
+    if (geoBusyRef.current) {
+      geoRequestRef.current += 1;
+      geoBusyRef.current = false;
+      setGeoBusy(false);
+    }
+  }, [selectedLocation]);
 
   const displayValue = focused
     ? text
@@ -90,9 +129,23 @@ export default function PlaceSearchField({
   };
 
   const requestLocation = () => {
+    const request = geoRequestRef.current + 1;
+    geoRequestRef.current = request;
+    const isCurrent = () => geoRequestRef.current === request;
+    const settle = () => {
+      geoRequestRef.current = request + 1;
+      if (geoWatchdogRef.current !== null) {
+        window.clearTimeout(geoWatchdogRef.current);
+        geoWatchdogRef.current = null;
+      }
+    };
+
     setGeoBusy(true);
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        if (!isCurrent()) return;
+        settle();
         const { latitude, longitude } = pos.coords;
         setGeoBusy(false);
         handleSelectPlace({
@@ -104,6 +157,8 @@ export default function PlaceSearchField({
         });
       },
       (err) => {
+        if (!isCurrent()) return;
+        settle();
         setGeoBusy(false);
         setFocused(true);
         if (err.code === 1) setGeoError("Location permission denied.");
@@ -113,9 +168,26 @@ export default function PlaceSearchField({
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
     );
+
+    // Safety net for a browser that never answers. `timeout` above is supposed
+    // to make the error callback fire, but some silent-denial and cross-origin
+    // cases call neither callback at all, and then the row sat on "Getting your
+    // location…" forever — which also kept the popover pinned open and hid the
+    // real pickup behind it.
+    geoWatchdogRef.current = window.setTimeout(() => {
+      if (!isCurrent()) return;
+      settle();
+      setGeoBusy(false);
+      setGeoError("Location request timed out.");
+    }, 12000);
   };
 
   const handleUseCurrentLocation = () => {
+    // A fresh attempt supersedes anything still in flight, so a fix from an
+    // earlier press cannot land in the middle of this one.
+    geoRequestRef.current += 1;
+    geoBusyRef.current = false;
+    setGeoBusy(false);
     setGeoError(null);
     setFocused(true);
     if (!("geolocation" in navigator)) {
@@ -175,9 +247,11 @@ export default function PlaceSearchField({
             }
           }}
           onBlur={() =>
-            window.setTimeout(() => {
-              if (!geoBusyRef.current) setFocused(false);
-            }, 120)
+            // Focus no longer has to be held open while a fix is in flight: the
+            // popover's own condition already keeps it up on `geoBusy` or
+            // `geoError`. Holding focus here instead is what pinned the input
+            // onto its stale text, so a pin dropped on the map never showed.
+            window.setTimeout(() => setFocused(false), 120)
           }
           placeholder={placeholder}
           autoComplete="off"
