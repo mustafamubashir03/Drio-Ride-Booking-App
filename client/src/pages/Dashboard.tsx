@@ -17,7 +17,12 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { VehicleChip, VehiclePlate, VehicleThumbnail } from "@/components/VehicleSummary";
+import {
+  VehicleColorBadge,
+  VehicleName,
+  VehiclePlate,
+  VehicleThumbnail,
+} from "@/components/VehicleSummary";
 import { useRoute } from "@/hooks/use-route";
 import { useNavigationRoute, type NavigationPhase } from "@/hooks/use-navigation-route";
 import { usePassengerSocket, type DriverLocationData, type PassengerSearchProgress, type RideStatusUpdateData } from "@/hooks/use-passenger-socket";
@@ -178,6 +183,26 @@ function formatTripDate(iso: string) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+/** Short day stamp for a ride card, e.g. "Oct 21". */
+function formatTripDay(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** Clock time of a ride, e.g. "3:45 PM". */
+function formatTripTime(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+/** Human label of a ride category ("mini" -> "Mini"). */
+function vehicleTypeLabel(id: string | null | undefined) {
+  if (!id) return "";
+  return vehicleTypes.find((type) => type.id === id)?.label ?? "";
 }
 
 const statusBadgeStyles: Record<BookingStatus, string> = {
@@ -1493,8 +1518,42 @@ const [reviewOpen, setReviewOpen] = useState(false);
               </Badge>
             </div>
 
-            {/* Same rule as the searching state: cancel is offered directly under
-                the headline, never after the driver card, ETA and trip details. */}
+            {/* Pickup ETA is the most time-critical fact on this card, so it
+                takes the top slot: it sits directly under the headline instead
+                of below the driver and vehicle details. */}
+            {passengerNavPhase &&
+              (passengerNavRoute || passengerNavStatus === "loading") && (
+                <div className="mt-3 flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 px-3.5 py-2.5">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                    <Clock className="h-4 w-4" />
+                  </span>
+                  {passengerNavRoute ? (
+                    <>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                          {passengerNavPhase === "arriving"
+                            ? "Time to pickup"
+                            : "Time to destination"}
+                        </p>
+                        <p className="text-[15px] font-bold leading-tight text-foreground">
+                          ~{formatDuration(passengerNavRoute.duration)}
+                        </p>
+                      </div>
+                      <span className="ml-auto shrink-0 text-[11.5px] font-medium text-muted-foreground">
+                        {formatDistance(passengerNavRoute.distance)} away
+                      </span>
+                    </>
+                  ) : (
+                    <p className="text-[12.5px] font-medium text-muted-foreground">
+                      Calculating ETA…
+                    </p>
+                  )}
+                </div>
+              )}
+
+            {/* Cancel is the one action the passenger must always be able to
+                reach, so it stays above the driver card and the trip details
+                even though the ETA now owns the top slot. */}
             {bookingStatus === "confirmed" ||
             bookingStatus === "arriving" ||
             bookingStatus === "arrived" ? (
@@ -1510,85 +1569,73 @@ const [reviewOpen, setReviewOpen] = useState(false);
               </Button>
             ) : null}
 
-{bookingDriverInfo ? (
+            {bookingDriverInfo ? (
               <div className="mt-4">
                 {/* Driver Card with Vehicle Info */}
                 <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/30 p-4 shadow-sm">
-                  <div className="flex items-start gap-4">
-                    {/* LEFT SIDE: Vehicle plate and colour first, then the driver */}
-                    <div className="flex-1 min-w-0 space-y-3">
-                      {/* Number plate - first, as the primary identifier of the car */}
-                      {bookingDriverInfo.vehicleNumberPlate && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground shrink-0">
-                            Plate
-                          </span>
-                          <VehiclePlate vehicle={bookingDriverInfo} />
-                        </div>
-                      )}
-
-                      {/* Vehicle name with the paint colour as a filled chip */}
-                      {(bookingDriverInfo.vehicleName || bookingDriverInfo.vehicleColor) && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground shrink-0">
-                            Car
-                          </span>
-                          <VehicleChip vehicle={bookingDriverInfo} />
-                        </div>
-                      )}
-
-                      {/* Driver */}
-                      <div className="flex items-start gap-3 border-t border-border/50 pt-3">
-                        <Avatar size="lg" className="shrink-0">
-                          {bookingDriverInfo.image ? (
-                            <AvatarImage src={bookingDriverInfo.image} alt="" />
-                          ) : null}
-                          <AvatarFallback className="bg-drio-success/15 text-[13px] font-bold text-drio-success">
-                            {(bookingDriverInfo.name ?? "D").charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                            Driver
-                          </p>
-                          <p className="truncate text-[14px] font-semibold text-foreground">
-                            {bookingDriverInfo.name ?? "Driver"}
-                          </p>
-                          <div className="mt-0.5 flex items-center gap-1 text-[11.5px] text-muted-foreground">
-                            {bookingDriverRating?.average != null && bookingDriverRating.count > 0 ? (
-                              <>
-                                <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-                                <span className="font-semibold text-foreground">
-                                  {bookingDriverRating.average.toFixed(1)}
-                                </span>
-                                <span>
-                                  · {bookingDriverRating.count}{" "}
-                                  {bookingDriverRating.count === 1 ? "rating" : "ratings"}
-                                </span>
-                              </>
-                            ) : (
-                              <span>New driver</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                  {/* Vehicle details on the left, the matching artwork on the
+                      right. The left column reads top to bottom: number
+                      plate, then the model, then the paint colour. */}
+                  <div className="flex items-center gap-4">
+                    <div className="min-w-0 flex-1 space-y-2.5">
+                      {bookingDriverInfo.vehicleNumberPlate ? (
+                        <VehiclePlate vehicle={bookingDriverInfo} />
+                      ) : null}
+                      {bookingDriverInfo.vehicleName ? (
+                        <VehicleName vehicle={bookingDriverInfo} />
+                      ) : null}
+                      {bookingDriverInfo.vehicleColor ? (
+                        <VehicleColorBadge vehicle={bookingDriverInfo} />
+                      ) : null}
+                      {!bookingDriverInfo.vehicleNumberPlate &&
+                      !bookingDriverInfo.vehicleName &&
+                      !bookingDriverInfo.vehicleColor ? (
+                        <p className="text-[12.5px] text-muted-foreground">
+                          Vehicle details not available yet
+                        </p>
+                      ) : null}
                     </div>
 
-                    {/* RIGHT SIDE: Vehicle Image */}
-                    {bookingDriverInfo.vehicleImage && (
-                      <VehicleThumbnail
-                        vehicle={bookingDriverInfo}
-                        className="hidden lg:block"
-                      />
-                    )}
+                    {bookingDriverInfo.vehicleImage ? (
+                      <VehicleThumbnail vehicle={bookingDriverInfo} />
+                    ) : null}
                   </div>
-                  {/* Mobile: Vehicle Image below */}
-                  {bookingDriverInfo.vehicleImage && (
-                    <VehicleThumbnail
-                      vehicle={bookingDriverInfo}
-                      className="mx-auto mt-4 lg:hidden"
-                    />
-                  )}
+
+                  {/* Driver */}
+                  <div className="mt-3 flex items-start gap-3 border-t border-border/50 pt-3">
+                    <Avatar size="lg" className="shrink-0">
+                      {bookingDriverInfo.image ? (
+                        <AvatarImage src={bookingDriverInfo.image} alt="" />
+                      ) : null}
+                      <AvatarFallback className="bg-drio-success/15 text-[13px] font-bold text-drio-success">
+                        {(bookingDriverInfo.name ?? "D").charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                        Driver
+                      </p>
+                      <p className="truncate text-[14px] font-semibold text-foreground">
+                        {bookingDriverInfo.name ?? "Driver"}
+                      </p>
+                      <div className="mt-0.5 flex items-center gap-1 text-[11.5px] text-muted-foreground">
+                        {bookingDriverRating?.average != null && bookingDriverRating.count > 0 ? (
+                          <>
+                            <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                            <span className="font-semibold text-foreground">
+                              {bookingDriverRating.average.toFixed(1)}
+                            </span>
+                            <span>
+                              · {bookingDriverRating.count}{" "}
+                              {bookingDriverRating.count === 1 ? "rating" : "ratings"}
+                            </span>
+                          </>
+                        ) : (
+                          <span>New driver</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1601,29 +1648,8 @@ const [reviewOpen, setReviewOpen] = useState(false);
               </div>
             )}
 
-            {passengerNavPhase &&
-              (passengerNavRoute || passengerNavStatus === "loading") && (
-                <div className="mt-4 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/8 px-3.5 py-2.5">
-                  <Clock className="h-4 w-4 shrink-0 text-primary" />
-                  {passengerNavRoute ? (
-                    <>
-                      <p className="text-[12.5px] font-semibold text-foreground">
-                        ~{formatDuration(passengerNavRoute.duration)} to{" "}
-                        {passengerNavPhase === "arriving" ? "pickup" : "destination"}
-                      </p>
-                      <span className="ml-auto text-[11px] text-muted-foreground">
-                        {formatDistance(passengerNavRoute.distance)}
-                      </span>
-                    </>
-                  ) : (
-                    <p className="text-[12px] text-muted-foreground">
-                      Calculating ETA…
-                    </p>
-                  )}
-                </div>
-              )}
-
             <TripDetailsStrip
+
               from={fromLocation}
               to={toLocation}
               route={route}
@@ -2068,98 +2094,113 @@ const [reviewOpen, setReviewOpen] = useState(false);
                                 title={`Booking ${booking._id}`}
                                  className="w-full max-w-full min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-card transition-[border-color,box-shadow] duration-200 hover:border-ring/25 hover:shadow-sm motion-reduce:transition-none"
                                >
-                                 <div className="flex min-w-0 flex-col items-stretch gap-2.5 px-3.5 py-3 sm:gap-3 sm:px-4 sm:py-3.5 lg:flex-row lg:items-center lg:gap-3">
-                                   <div
-                                     aria-hidden="true"
-                                     className="hidden w-10 shrink-0 self-stretch py-1 lg:flex lg:flex-col lg:items-center"
-                                   >
-                                     <span className="mt-0.5 h-2 w-2 rounded-full bg-primary ring-4 ring-primary/10" />
-                                     <span className="my-1 w-px min-h-5 flex-1 bg-border" />
-                                     <MapPin className="h-3.5 w-3.5 text-drio-blue" />
-                                   </div>
-
-                                  {/* Route */}
-                                  <div className="flex-1 min-w-0">
-                                     <div className="mb-1 grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-2 sm:flex">
-                                       <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:hidden">
-                                         From
-                                       </span>
-                                       <span className="hidden h-2 w-2 shrink-0 rounded-full bg-primary sm:block lg:hidden" />
-                                       <p className="min-w-0 truncate text-[13.5px] font-semibold leading-snug text-foreground sm:text-[13px] sm:font-medium sm:leading-tight">
-                                         {formatPlace(booking.source)}
-                                       </p>
-                                     </div>
-                                     <div className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] items-center gap-2 sm:flex">
-                                       <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:hidden">
-                                         To
-                                       </span>
-                                       <MapPin className="hidden h-2.5 w-2.5 shrink-0 text-drio-blue sm:block lg:hidden" />
-                                       <p className="min-w-0 truncate text-[12.5px] leading-snug text-muted-foreground sm:text-[12px] sm:leading-tight">
-                                         {formatPlace(booking.destination)}
-                                       </p>
-                                     </div>
-{booking.driverInfo && (
-                                      <div className="mt-1.5 space-y-1.5">
-                                        <p className="flex min-w-0 items-center gap-1 text-[11.5px] text-muted-foreground">
-                                          <span className="min-w-0 truncate font-medium text-foreground/80">{booking.driverInfo.name ?? "Driver"}</span>
-                                          {booking.driverRating?.average != null && booking.driverRating.count > 0 ? (
-                                            <>
-                                              <span>·</span>
-                                               <Star aria-hidden="true" className="h-3 w-3 fill-amber-500 text-amber-500" />
-                                              <span className="font-semibold text-foreground">
-                                                {booking.driverRating.average.toFixed(1)}
-                                              </span>
-                                            </>
-                                          ) : null}
-                                        </p>
-                                          {(booking.driverInfo.vehicleNumberPlate || booking.driverInfo.vehicleName || booking.driverInfo.vehicleColor) && (
-                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-muted-foreground">
-                                              {booking.driverInfo.vehicleNumberPlate && (
-                                                <div className="flex items-center gap-1.5">
-                                                  <span className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground shrink-0">Plate</span>
-                                                  <VehiclePlate vehicle={booking.driverInfo} compact />
-                                                </div>
-                                              )}
-                                              {(booking.driverInfo.vehicleName || booking.driverInfo.vehicleColor) && (
-                                                <div className="flex items-center gap-1.5">
-                                                  <span className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground shrink-0">Car</span>
-                                                  <VehicleChip vehicle={booking.driverInfo} compact />
-                                                </div>
-                                              )}
-                                            </div>
-                                          )}
-                                        </div>
-                                      )}
-                                   </div>
-
-                                   {/* Vehicle Image - Responsive: on right side on desktop, below on mobile */}
-                                   {booking.driverInfo?.vehicleImage && (
+                                 <div className="flex min-w-0 items-center gap-3 px-3.5 py-3 sm:gap-4 sm:px-4 sm:py-3.5">
+                                   {/* LEFT: the vehicle that took the ride. */}
+                                   {booking.driverInfo?.vehicleImage ? (
                                      <VehicleThumbnail
                                        vehicle={booking.driverInfo}
                                        size="sm"
-                                       className="mx-auto mt-3 lg:hidden"
                                      />
-                                   )}
-                                   {booking.driverInfo?.vehicleImage && (
-                                     <VehicleThumbnail
-                                       vehicle={booking.driverInfo}
-                                       size="sm"
-                                       className="ml-4 hidden lg:block"
-                                     />
-                                   )}
+                                   ) : null}
 
-                                  <div className="flex w-full min-w-0 max-w-full shrink-0 flex-col items-end gap-1.5 max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:items-center max-sm:gap-2 sm:w-auto">
-                                     <span className="min-w-0 break-words text-[14px] font-semibold leading-tight tabular-nums text-foreground max-sm:whitespace-normal sm:whitespace-nowrap sm:text-[12px]">
-                                      {formatFare(booking.fare)}
-                                    </span>
-                                    <Badge
-                                      variant="outline"
-                                       className={`max-w-full whitespace-nowrap text-[10px] font-medium capitalize ${statusBadgeStyles[booking.status]}`}
-                                    >
-                                      {booking.status.replace("_", " ")}
-                                    </Badge>
-                                  </div>
-                                </div>
+                                   {/* RIGHT: the ride itself - status and time first,
+                                       then the route, the fare and who it was with. */}
+                                   <div className="min-w-0 flex-1 space-y-1.5">
+                                     {/* Ride status and date/time */}
+                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                       <Badge
+                                         variant="outline"
+                                         className={`whitespace-nowrap text-[10px] font-medium capitalize ${statusBadgeStyles[booking.status]}`}
+                                       >
+                                         {booking.status.replace("_", " ")}
+                                       </Badge>
+                                       <span className="text-[11.5px] text-muted-foreground">
+                                         {formatTripDay(booking.createdAt)} ·{" "}
+                                         {formatTripTime(booking.createdAt)}
+                                       </span>
+                                     </div>
+
+                                     {/* Pickup and destination */}
+                                     <div className="min-w-0 space-y-1">
+                                       <p className="flex min-w-0 items-center gap-1.5">
+                                         <span
+                                           aria-hidden="true"
+                                           className="h-2 w-2 shrink-0 rounded-full bg-primary"
+                                         />
+                                         <span className="min-w-0 truncate text-[13px] font-semibold leading-snug text-foreground">
+                                           {formatPlace(booking.source)}
+                                         </span>
+                                       </p>
+                                       <p className="flex min-w-0 items-center gap-1.5">
+                                         <MapPin
+                                           aria-hidden="true"
+                                           className="h-2.5 w-2.5 shrink-0 text-drio-blue"
+                                         />
+                                         <span className="min-w-0 truncate text-[12px] leading-snug text-muted-foreground">
+                                           {formatPlace(booking.destination)}
+                                         </span>
+                                       </p>
+                                     </div>
+
+                                     {/* Fare and the other essentials */}
+                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                       <span className="text-[13.5px] font-semibold leading-tight tabular-nums text-foreground">
+                                         {formatFare(booking.fare)}
+                                       </span>
+                                       {vehicleTypeLabel(
+                                         booking.driverInfo?.vehicleType,
+                                       ) ? (
+                                         <span className="text-[11px] text-muted-foreground">
+                                           {vehicleTypeLabel(
+                                             booking.driverInfo?.vehicleType,
+                                           )}
+                                         </span>
+                                       ) : null}
+                                       <span className="text-[11px] text-muted-foreground">
+                                         #{booking._id.slice(-6).toUpperCase()}
+                                       </span>
+                                     </div>
+
+                                     {/* Driver and vehicle identification */}
+                                     {booking.driverInfo ? (
+                                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                                         <span className="min-w-0 truncate text-[11.5px] font-medium text-foreground/80">
+                                           {booking.driverInfo.name ?? "Driver"}
+                                         </span>
+                                         {booking.driverRating?.average != null &&
+                                         booking.driverRating.count > 0 ? (
+                                           <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
+                                             <Star
+                                               aria-hidden="true"
+                                               className="h-3 w-3 fill-amber-500 text-amber-500"
+                                             />
+                                             <span className="font-semibold text-foreground">
+                                               {booking.driverRating.average.toFixed(1)}
+                                             </span>
+                                           </span>
+                                         ) : null}
+                                         {booking.driverInfo.vehicleNumberPlate ? (
+                                           <VehiclePlate
+                                             vehicle={booking.driverInfo}
+                                             compact
+                                           />
+                                         ) : null}
+                                         {booking.driverInfo.vehicleName ? (
+                                           <VehicleName
+                                             vehicle={booking.driverInfo}
+                                             compact
+                                           />
+                                         ) : null}
+                                         {booking.driverInfo.vehicleColor ? (
+                                           <VehicleColorBadge
+                                             vehicle={booking.driverInfo}
+                                             compact
+                                           />
+                                         ) : null}
+                                       </div>
+                                     ) : null}
+                                   </div>
+                                 </div>
 
                                 {booking.status === "completed" && booking.driver && (
                                    <div className="min-w-0 max-w-full border-t border-border/70 bg-muted/20 px-3 py-2.5 sm:px-4 sm:py-3">

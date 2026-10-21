@@ -42,6 +42,76 @@ export function VehiclePlate({ vehicle, compact = false, className }: VehiclePla
   );
 }
 
+type VehicleNameProps = {
+  vehicle: VehicleSummary;
+  /** Tailwind size for the name text. */
+  compact?: boolean;
+  className?: string;
+};
+
+/**
+ * The model of the vehicle ("Skoda Slavia").
+ *
+ * Kept separate from the colour badge so a card can stack the two in the
+ * order the design asks for: plate, model, then the paint colour.
+ */
+export function VehicleName({ vehicle, compact = false, className }: VehicleNameProps) {
+  const name = vehicle.vehicleName?.trim();
+  if (!name) return null;
+
+  return (
+    <span
+      className={cn(
+        "min-w-0 truncate font-semibold text-foreground",
+        compact ? "max-w-[130px] text-[11px]" : "max-w-[190px] text-[13px]",
+        className
+      )}
+    >
+      {name}
+    </span>
+  );
+}
+
+type VehicleColorBadgeProps = {
+  vehicle: VehicleSummary;
+  compact?: boolean;
+  className?: string;
+};
+
+/**
+ * The paint colour of the vehicle, shown as a chip filled with that exact
+ * colour.
+ *
+ * The label colour is derived from the fill so the name stays readable on
+ * light (White, Beige) as well as dark (Carbon Black, Midnight Blue) bodies.
+ */
+export function VehicleColorBadge({
+  vehicle,
+  compact = false,
+  className,
+}: VehicleColorBadgeProps) {
+  const color = vehicle.vehicleColor?.trim();
+  if (!color) return null;
+
+  const hex = vehicleColorHex(color);
+  const foreground = readableTextOn(hex);
+  const border = vehicleColorBorder(hex);
+
+  return (
+    <span
+      title={color}
+      className={cn(
+        "inline-flex shrink-0 items-center rounded-lg font-medium",
+        compact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-[11.5px]",
+        className
+      )}
+      style={{ backgroundColor: hex, color: foreground, border: `1px solid ${border}` }}
+    >
+      {color}
+    </span>
+  );
+}
+
 type VehicleChipProps = {
   vehicle: VehicleSummary;
   compact?: boolean;
@@ -51,42 +121,18 @@ type VehicleChipProps = {
 /**
  * The vehicle name plus a chip filled with the actual paint colour.
  *
- * The colour name is rendered inside a block filled with that colour, and the
- * label colour is picked from the fill so it stays readable on both light
- * (White, Beige) and dark (Carbon Black, Navy Blue) bodies.
+ * Composed from {@link VehicleName} and {@link VehicleColorBadge} so the
+ * name and the colour chip stay visually identical everywhere they appear.
  */
 export function VehicleChip({ vehicle, compact = false, className }: VehicleChipProps) {
   const name = vehicle.vehicleName?.trim();
   const color = vehicle.vehicleColor?.trim();
   if (!name && !color) return null;
 
-  const hex = vehicleColorHex(color);
-  const foreground = readableTextOn(hex);
-  const border = vehicleColorBorder(hex);
-
   return (
     <div className={cn("flex min-w-0 flex-wrap items-center gap-1.5", className)}>
-      {name ? (
-        <span
-          className={cn(
-            "min-w-0 truncate font-semibold text-foreground",
-            compact ? "max-w-[130px] text-[11px]" : "max-w-[190px] text-[13px]"
-          )}
-        >
-          {name}
-        </span>
-      ) : null}
-      {color ? (
-        <span
-          className={cn(
-            "inline-flex shrink-0 items-center rounded-lg font-medium",
-            compact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-[11.5px]"
-          )}
-          style={{ backgroundColor: hex, color: foreground, border: `1px solid ${border}` }}
-        >
-          {color}
-        </span>
-      ) : null}
+      <VehicleName vehicle={vehicle} compact={compact} />
+      <VehicleColorBadge vehicle={vehicle} compact={compact} />
     </div>
   );
 }
@@ -105,9 +151,11 @@ type VehicleThumbnailProps = {
  * resolves against the app origin and shows the vehicle that matches the
  * driver's category.
  *
- * The artwork is never cropped: the picture is scaled down to fit the frame
- * with object-contain, so the whole car stays visible whatever its original
- * proportions are.
+ * The artwork is never cropped: it keeps its own proportions
+ * (object-contain) and the frame only reserves a width, so the height
+ * follows the artwork instead of boxing it into a fixed square. A wide car
+ * therefore sits snugly in its frame rather than floating in a tall empty
+ * box, and a tall car is scaled down instead of being cut off.
  */
 export function VehicleThumbnail({ vehicle, size = "md", className }: VehicleThumbnailProps) {
   const image = vehicle.vehicleImage?.trim();
@@ -119,7 +167,7 @@ export function VehicleThumbnail({ vehicle, size = "md", className }: VehicleThu
     <div
       className={cn(
         "relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-muted/40",
-        size === "sm" ? "h-14 w-20" : "h-20 w-28",
+        size === "sm" ? "w-20 sm:w-24" : "w-24 sm:w-28 lg:w-32",
         className
       )}
     >
@@ -127,7 +175,10 @@ export function VehicleThumbnail({ vehicle, size = "md", className }: VehicleThu
         src={image}
         alt={alt}
         loading="lazy"
-        className="max-h-full max-w-full object-contain object-center"
+        className={cn(
+          "h-auto w-full object-contain object-center",
+          size === "sm" ? "max-h-16 sm:max-h-20" : "max-h-20 sm:max-h-24 lg:max-h-28"
+        )}
       />
     </div>
   );
