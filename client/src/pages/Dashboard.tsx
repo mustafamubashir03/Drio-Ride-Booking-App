@@ -1577,15 +1577,19 @@ const [reviewOpen, setReviewOpen] = useState(false);
                       right. The left column reads top to bottom: number
                       plate, then the model, then the paint colour. */}
                   <div className="flex items-center gap-4">
-                    <div className="min-w-0 flex-1 space-y-2.5">
+                    <div className="min-w-0 flex-1 space-y-3">
                       {bookingDriverInfo.vehicleNumberPlate ? (
                         <VehiclePlate vehicle={bookingDriverInfo} />
                       ) : null}
                       {bookingDriverInfo.vehicleName ? (
-                        <VehicleName vehicle={bookingDriverInfo} />
+                        <div className="mt-1.5">
+                          <VehicleName vehicle={bookingDriverInfo} />
+                        </div>
                       ) : null}
                       {bookingDriverInfo.vehicleColor ? (
-                        <VehicleColorBadge vehicle={bookingDriverInfo} />
+                        <div className="mt-1.5">
+                          <VehicleColorBadge vehicle={bookingDriverInfo} />
+                        </div>
                       ) : null}
                       {!bookingDriverInfo.vehicleNumberPlate &&
                       !bookingDriverInfo.vehicleName &&
