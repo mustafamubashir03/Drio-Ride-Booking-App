@@ -167,7 +167,7 @@ export function VehicleThumbnail({ vehicle, size = "md", className }: VehicleThu
     <div
       className={cn(
         "relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-muted/40",
-        size === "sm" ? "w-20 sm:w-24" : "w-24 sm:w-28 lg:w-32",
+        size === "sm" ? "h-14 w-20" : "h-20 w-28",
         className
       )}
     >
@@ -175,10 +175,7 @@ export function VehicleThumbnail({ vehicle, size = "md", className }: VehicleThu
         src={image}
         alt={alt}
         loading="lazy"
-        className={cn(
-          "h-auto w-full object-contain object-center",
-          size === "sm" ? "max-h-16 sm:max-h-20" : "max-h-20 sm:max-h-24 lg:max-h-28"
-        )}
+        className="max-h-full max-w-full object-contain object-center"
       />
     </div>
   );
