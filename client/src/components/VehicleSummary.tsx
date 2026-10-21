@@ -104,6 +104,10 @@ type VehicleThumbnailProps = {
  * The image is stored as a client-relative path ("/mini.png"), so it always
  * resolves against the app origin and shows the vehicle that matches the
  * driver's category.
+ *
+ * The artwork is never cropped: the picture is scaled down to fit the frame
+ * with object-contain, so the whole car stays visible whatever its original
+ * proportions are.
  */
 export function VehicleThumbnail({ vehicle, size = "md", className }: VehicleThumbnailProps) {
   const image = vehicle.vehicleImage?.trim();
@@ -114,7 +118,7 @@ export function VehicleThumbnail({ vehicle, size = "md", className }: VehicleThu
   return (
     <div
       className={cn(
-        "relative shrink-0 overflow-hidden rounded-xl border border-border/50 bg-muted/40",
+        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-muted/40",
         size === "sm" ? "h-14 w-20" : "h-20 w-28",
         className
       )}
@@ -123,7 +127,7 @@ export function VehicleThumbnail({ vehicle, size = "md", className }: VehicleThu
         src={image}
         alt={alt}
         loading="lazy"
-        className="h-full w-full object-cover object-center"
+        className="max-h-full max-w-full object-contain object-center"
       />
     </div>
   );
