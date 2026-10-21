@@ -23,7 +23,7 @@ export const listBookingsRepository = async (passengerId: string) => {
     logger.info(`[REPO] listBookingsRepository: passengerId=${passengerId}`);
     const bookings = await Booking.find({ passenger: passengerId })
         .sort({ _id: -1 })
-        .populate("driver", "name image")
+        .populate("driver", "name image vehicleName vehicleColor vehicleNumberPlate vehicleImage vehicleType")
         .lean()
         .exec()
     logger.info(`[REPO] Found ${bookings.length} bookings for passengerId=${passengerId}`);
@@ -75,7 +75,7 @@ export const getDriverRatingSummariesRepository = async (driverIds: string[]) =>
 export const findBookingByIdRepository = async (bookingId: string) => {
     return await Booking.findById(bookingId)
         .populate("passenger", "name email")
-        .populate("driver", "name image")
+        .populate("driver", "name image vehicleName vehicleColor vehicleNumberPlate vehicleImage vehicleType")
         .lean()
         .exec()
 }
@@ -117,7 +117,7 @@ export const cancelBookingRepository = async ({
         { new: true }
     )
         .populate("passenger", "name email")
-        .populate("driver", "name image")
+        .populate("driver", "name image vehicleName vehicleColor vehicleNumberPlate vehicleImage vehicleType")
         .lean()
         .exec()
 }
@@ -149,7 +149,7 @@ export const reviewBookingRepository = async ({
         { new: true }
     )
         .populate("passenger", "name email")
-        .populate("driver", "name image")
+        .populate("driver", "name image vehicleName vehicleColor vehicleNumberPlate vehicleImage vehicleType")
         .lean()
         .exec()
 }

@@ -45,6 +45,9 @@ tmp-*
 # ---- Coverage ----
 coverage/
 
+# ---- Database snapshots (may contain production user data) ----
+backups/
+
 # ---- Editor / IDE ----
 .vscode/*
 !.vscode/extensions.json

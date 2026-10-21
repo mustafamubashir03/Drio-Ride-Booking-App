@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { AccountSwitcher } from "@/components/AccountSwitcher";
+import { VehicleChip, VehiclePlate, VehicleThumbnail } from "@/components/VehicleSummary";
 import { MotionPage } from "@/motion/MotionPage";
 import { AnimatePresence, motion } from "motion/react";
 import { motionStateProps, useMotionSystem } from "@/motion/use-motion";
@@ -954,6 +955,56 @@ export default function AdminDashboard() {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {/* Vehicle the applicant will drive. Shown to the reviewer so
+                      the car that ends up on the passenger card is visible at
+                      approval time. */}
+                  {(selected.vehicleName ||
+                    selected.vehicleColor ||
+                    selected.vehicleNumberPlate ||
+                    selected.vehicleImage) ? (
+                    <Card>
+                      <CardContent>
+                        <div className="mb-3 flex items-center gap-2">
+                          <Car className="h-4 w-4 text-drio-violet" aria-hidden />
+                          <h3 className="text-[15px] font-semibold text-foreground">
+                            Vehicle
+                          </h3>
+                        </div>
+                        <div className="flex items-start gap-4">
+                          <div className="min-w-0 flex-1 space-y-2.5">
+                            {selected.vehicleNumberPlate ? (
+                              <div className="flex items-center gap-2">
+                                <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                                  Plate
+                                </span>
+                                <VehiclePlate vehicle={selected} />
+                              </div>
+                            ) : null}
+
+                            {(selected.vehicleName || selected.vehicleColor) && (
+                              <div className="flex items-center gap-2">
+                                <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                                  Car
+                                </span>
+                                <VehicleChip vehicle={selected} />
+                              </div>
+                            )}
+
+                            {selected.vehicleType ? (
+                              <p className="text-[11.5px] capitalize text-muted-foreground">
+                                {selected.vehicleType.replace("-", " ")} category
+                              </p>
+                            ) : null}
+                          </div>
+
+                          {selected.vehicleImage ? (
+                            <VehicleThumbnail vehicle={selected} className="ml-auto" />
+                          ) : null}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : null}
 
                   {/* Documents */}
                   <Card>

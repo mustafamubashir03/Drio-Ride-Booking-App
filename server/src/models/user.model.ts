@@ -44,6 +44,14 @@ const userSchema = new Schema<User>({
     banReason: { type: String, default: null },
     banExpires: { type: Date, default: null },
     vehicleType: { type: String, default: 'mini' },
+    // The driver's own vehicle. These must be declared as real schema paths:
+    // with `strict: false` a plain assignment to an undeclared key is silently
+    // dropped on save, so the driver's car never reached Mongo and every
+    // vehicle-aware API returned empty vehicle details.
+    vehicleName: { type: String, default: null },
+    vehicleColor: { type: String, default: null },
+    vehicleNumberPlate: { type: String, default: null },
+    vehicleImage: { type: String, default: null },
     location: {
         type: {
             type: String,

@@ -76,7 +76,7 @@ export const listBookingsController = async (req: Request, res: Response) => {
 
             const driver =
                 booking.driver && typeof booking.driver === "object"
-                    ? (booking.driver as { _id: unknown; name?: string; image?: string; vehicleName?: string; vehicleColor?: string; vehicleNumberPlate?: string; vehicleImage?: string })
+                    ? (booking.driver as { _id: unknown; name?: string; image?: string; vehicleType?: string; vehicleName?: string; vehicleColor?: string; vehicleNumberPlate?: string; vehicleImage?: string })
                     : null;
             const driverId = driver ? String(driver._id) : null;
 
@@ -100,6 +100,7 @@ export const listBookingsController = async (req: Request, res: Response) => {
                     ? { 
                         name: driver.name ?? null, 
                         image: driver.image ?? null,
+                        vehicleType: driver.vehicleType ?? null,
                         vehicleName: driver.vehicleName ?? null,
                         vehicleColor: driver.vehicleColor ?? null,
                         vehicleNumberPlate: driver.vehicleNumberPlate ?? null,

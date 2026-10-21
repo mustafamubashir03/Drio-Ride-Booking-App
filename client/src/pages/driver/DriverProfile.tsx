@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
+  useDriverProfileQuery,
   useDriverRatingQuery,
   useMyDriverApplicationQuery,
 } from "@/hooks/queries/use-driver";
@@ -12,6 +13,7 @@ import {
   type DriverApplication,
 } from "@/lib/driver-api";
 import { formatDate } from "@/lib/format";
+import { VehicleChip, VehiclePlate, VehicleThumbnail } from "@/components/VehicleSummary";
 import { Car, CheckCircle2, CircleAlert, Clock3, FileImage, FileText, Info, Star, User as UserIcon, XCircle } from "lucide-react";
 import { MotionPage } from "@/motion/MotionPage";
 
@@ -68,6 +70,7 @@ export default function DriverProfile() {
     isPending: ratingPending,
     isError: ratingFailed,
   } = useDriverRatingQuery();
+  const { data: profile } = useDriverProfileQuery();
   const loadError = error instanceof Error ? error.message : error;
 
   const meta = app ? statusMeta[app.status] : null;
@@ -315,11 +318,51 @@ export default function DriverProfile() {
                 </p>
               </div>
             </div>
-            <p className="mt-3 flex items-start gap-1.5 text-[12px] leading-relaxed text-muted-foreground">
-              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-              Vehicle make, model, colour and plate aren&apos;t stored yet.
-              They&apos;ll appear here once driver vehicle management ships.
-            </p>
+
+            {/* The car this driver actually drives, rendered exactly as a
+                passenger sees it on the booking card. */}
+            {profile &&
+            (profile.vehicleNumberPlate ||
+              profile.vehicleName ||
+              profile.vehicleColor ||
+              profile.vehicleImage) ? (
+              <div className="mt-3 flex items-start gap-4 rounded-xl border border-border bg-muted/20 px-4 py-3.5">
+                <div className="min-w-0 flex-1 space-y-2.5">
+                  {profile.vehicleNumberPlate ? (
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                        Plate
+                      </span>
+                      <VehiclePlate vehicle={profile} />
+                    </div>
+                  ) : null}
+
+                  {(profile.vehicleName || profile.vehicleColor) && (
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                        Car
+                      </span>
+                      <VehicleChip vehicle={profile} />
+                    </div>
+                  )}
+
+                  {profile.vehicleType ? (
+                    <p className="text-[11.5px] capitalize text-muted-foreground">
+                      {profile.vehicleType.replace("-", " ")} category
+                    </p>
+                  ) : null}
+                </div>
+
+                {profile.vehicleImage ? (
+                  <VehicleThumbnail vehicle={profile} className="ml-auto" />
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-3 flex items-start gap-1.5 text-[12px] leading-relaxed text-muted-foreground">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                Your vehicle is being set up. It will appear here shortly.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

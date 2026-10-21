@@ -21,6 +21,7 @@ export type BookingDriverInfo = {
     vehicleColor: string | null;
     vehicleNumberPlate: string | null;
     vehicleImage: string | null;
+    vehicleType?: string | null;
 } | null;
 
 export type BookingDriverLocation = {

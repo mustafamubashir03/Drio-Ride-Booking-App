@@ -27,6 +27,25 @@ export type DriverApplication = {
     adminNote: string | null;
     rejectionReason: string | null;
     documents: DriverApplicationDocument[];
+    vehicleType?: string | null;
+    vehicleName?: string | null;
+    vehicleColor?: string | null;
+    vehicleNumberPlate?: string | null;
+    vehicleImage?: string | null;
+};
+
+/** The driver's own account and the car they drive. */
+export type DriverProfile = {
+    _id: string;
+    name: string | null;
+    email: string | null;
+    image: string | null;
+    role: string | null;
+    vehicleType: string | null;
+    vehicleName: string | null;
+    vehicleColor: string | null;
+    vehicleNumberPlate: string | null;
+    vehicleImage: string | null;
 };
 
 // The admin endpoints populate `user` with `name` and `email` (see
@@ -75,6 +94,21 @@ export async function fetchMyDriverApplication(): Promise<DriverApplication | nu
         throw new Error(data.message ?? "Could not load your application");
     }
     return data.application ?? null;
+}
+
+/**
+ * The driver's own profile, including the car they drive.
+ *
+ * The server assigns a vehicle on first read if the account does not have one
+ * yet, so the driver always sees the exact vehicle a passenger will see.
+ */
+export async function fetchDriverProfile(): Promise<DriverProfile> {
+    const response = await apiFetch("/api/v1/driver/profile");
+    const data = (await response.json()) as { success?: boolean; profile?: DriverProfile; message?: string };
+    if (!response.ok || !data.success || !data.profile) {
+        throw new Error(data.message ?? "Could not load your driver profile");
+    }
+    return data.profile;
 }
 
 export async function uploadDriverDocument(args: {

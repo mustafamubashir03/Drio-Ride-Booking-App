@@ -59,9 +59,10 @@ const serializePassengerRide = (booking: any) => {
                 vehicleColor: booking.driver.vehicleColor ?? null,
                 vehicleNumberPlate: booking.driver.vehicleNumberPlate ?? null,
                 vehicleImage: booking.driver.vehicleImage ?? null,
+                vehicleType: booking.driver.vehicleType ?? null,
               }
             : booking.driver
-            ? { _id: String(booking.driver), name: null, image: null, vehicleName: null, vehicleColor: null, vehicleNumberPlate: null, vehicleImage: null }
+            ? { _id: String(booking.driver), name: null, image: null, vehicleName: null, vehicleColor: null, vehicleNumberPlate: null, vehicleImage: null, vehicleType: null }
             : null;
     return {
         _id: id.toString(),
@@ -78,6 +79,7 @@ const serializePassengerRide = (booking: any) => {
             vehicleColor: driver.vehicleColor,
             vehicleNumberPlate: driver.vehicleNumberPlate,
             vehicleImage: driver.vehicleImage,
+            vehicleType: driver.vehicleType,
         } : null,
         passenger:
             booking.passenger && typeof booking.passenger === "object"

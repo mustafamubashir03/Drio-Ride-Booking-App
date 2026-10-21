@@ -6,6 +6,7 @@ import {
   fetchDriverAvailability,
   fetchDriverEarnings,
   fetchDriverEarningsSeries,
+  fetchDriverProfile,
   fetchDriverRating,
   fetchDriverRide,
   fetchDriverRides,
@@ -86,6 +87,16 @@ export function useDriverAvailabilityQuery() {
   return useQuery({
     queryKey: queryKeys.driver.availability(),
     queryFn: fetchDriverAvailability,
+  });
+}
+
+/* ── Profile & vehicle ────────────────────────────────────────────────── */
+
+/** The driver's own account and the car they drive. */
+export function useDriverProfileQuery() {
+  return useQuery({
+    queryKey: queryKeys.driver.profile(),
+    queryFn: fetchDriverProfile,
   });
 }
 

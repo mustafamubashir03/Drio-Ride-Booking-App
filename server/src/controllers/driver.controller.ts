@@ -6,6 +6,7 @@ import {
     getDriverAvailabilityService,
     updateDriverAvailabilityService,
 } from "../services/driver-availability.service";
+import { getDriverProfileService } from "../services/driver-profile.service";
 import type { DriverAvailabilityStatus } from "../models/driver-application.model";
 
 
@@ -60,6 +61,22 @@ export const updateDriverAvailabilityController = async (
             req.body.availabilityStatus as DriverAvailabilityStatus
         );
         return res.status(200).json({ success: true, availability });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const getDriverProfileController = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    try {
+        const profile = await getDriverProfileService(req.authUser!.id);
+        if (!profile) {
+            return res.status(404).json({ success: false, message: "Driver not found" });
+        }
+        return res.status(200).json({ success: true, profile });
     } catch (error) {
         next(error);
     }

@@ -1,6 +1,7 @@
 import express from 'express'
 import {
     getDriverAvailabilityController,
+    getDriverProfileController,
     updateDriverAvailabilityController,
     updateLocationController,
 } from '../../controllers/driver.controller'
@@ -33,6 +34,10 @@ driverRouter.post('/location', updateLocationController)
 
 driverRouter.get('/status', getDriverAvailabilityController)
 driverRouter.put('/status', validateRequestBody(driverAvailabilitySchema), updateDriverAvailabilityController)
+
+// The driver's own account and the car they drive. Used by the driver portal
+// so the driver sees exactly the vehicle a passenger will see.
+driverRouter.get('/profile', getDriverProfileController)
 
 driverRouter.get('/rating', getDriverRatingController)
 driverRouter.get('/rides/active', getDriverActiveRideController)

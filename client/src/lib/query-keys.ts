@@ -30,6 +30,7 @@ export const queryKeys = {
   driver: {
     all: ["driver"] as const,
     availability: () => [...queryKeys.driver.all, "availability"] as const,
+    profile: () => [...queryKeys.driver.all, "profile"] as const,
     activeRide: () => [...queryKeys.driver.all, "active-ride"] as const,
     rides: () => [...queryKeys.driver.all, "rides"] as const,
     ride: (bookingId: string) => [...queryKeys.driver.all, "ride", bookingId] as const,

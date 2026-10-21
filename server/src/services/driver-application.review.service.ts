@@ -11,6 +11,11 @@ import {
     listDriverApplicationsRepository,
     updateDriverApplicationReviewRepository,
 } from "../repositories/driver-application.repository";
+import {
+    promoteUserToDriverRepository,
+    updateUserVehicleRepository,
+} from "../repositories/user.repository";
+import { getRandomCarDetails } from "../lib/vehicle-utils";
 import { sendMail } from "../lib/mailer";
 
 type DriverApplicationStatus = "pending" | "approved" | "rejected";
@@ -176,6 +181,62 @@ export const reviewDriverApplicationService = async ({
     } catch (error) {
         logger.error("Failed to review driver application", error);
         throw new InternalServerError("Failed to review the driver application");
+    }
+
+    // An approval has to make the applicant a real driver, not just flip a
+    // status string on the application. Without this the account keeps the
+    // passenger role, the driver portal has no vehicle to show, and every
+    // passenger card for this driver renders without a car.
+    if (decision === "approved" && updated) {
+        try {
+            const applicationUser = updated.user as { _id?: Types.ObjectId } | undefined;
+            const userId = applicationUser?._id?.toString();
+            if (userId) {
+                const vehicleType =
+                    (updated as { vehicleType?: string }).vehicleType || "mini";
+
+                // Keep the vehicle the driver already has if the application
+                // carries one, otherwise assign a car for their category so
+                // the driver is never visible without a vehicle.
+                const existingVehicle = {
+                    vehicleName: (updated as { vehicleName?: string }).vehicleName,
+                    vehicleColor: (updated as { vehicleColor?: string }).vehicleColor,
+                    vehicleNumberPlate: (updated as { vehicleNumberPlate?: string })
+                        .vehicleNumberPlate,
+                    vehicleImage: (updated as { vehicleImage?: string }).vehicleImage,
+                };
+
+                const hasCompleteVehicle = Boolean(
+                    existingVehicle.vehicleName &&
+                    existingVehicle.vehicleColor &&
+                    existingVehicle.vehicleNumberPlate &&
+                    existingVehicle.vehicleImage
+                );
+
+                const vehicle = hasCompleteVehicle
+                    ? {
+                        vehicleType,
+                        vehicleName: existingVehicle.vehicleName!,
+                        vehicleColor: existingVehicle.vehicleColor!,
+                        vehicleNumberPlate: existingVehicle.vehicleNumberPlate!,
+                        vehicleImage: existingVehicle.vehicleImage!,
+                    }
+                    : { vehicleType, ...getRandomCarDetails(vehicleType) };
+
+                await updateUserVehicleRepository(userId, vehicle);
+                await promoteUserToDriverRepository(userId);
+
+                logger.info("Driver application approved", {
+                    userId,
+                    vehicleType: vehicle.vehicleType,
+                    vehicleNumberPlate: vehicle.vehicleNumberPlate,
+                });
+            }
+        } catch (error) {
+            // The review itself already succeeded and must not be undone by
+            // this, so log and continue rather than throwing.
+            logger.error("Failed to promote approved driver to driver role", error);
+        }
     }
 
     // Notify the applicant using the user info resolved by the repository.
